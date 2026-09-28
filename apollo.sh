@@ -50,8 +50,6 @@ CR_PLATFORM=13.0.0
 # Current Date
 CR_DATE=$(date +%d.%m.%Y)
 # General init
-export KSU_MANUAL_HOOK=y
-export CONFIG_KSU_MANUAL_HOOK=y
 export ANDROID_MAJOR_VERSION=$CR_ANDROID
 export PLATFORM_VERSION=$CR_PLATFORM
 export $CR_ARCH
@@ -312,6 +310,8 @@ BUILD_GENERATE_CONFIG()
   fi
   if [[ "$CR_KSU" =~ ^[yY]$ ]]; then
     echo " Building KernelSU"
+    # KernelSU-Next v3.4 requires kprobes; keep non-KSU builds unchanged.
+    sed -i 's/^# CONFIG_KPROBES is not set$/CONFIG_KPROBES=y/' $CR_DEFCONFIG/tmp_defconfig
     echo "CONFIG_KSU=y" >> $CR_DEFCONFIG/tmp_defconfig
     CR_IMAGE_NAME=$CR_IMAGE_NAME-KSU
     zver=$zver-KernelSU
