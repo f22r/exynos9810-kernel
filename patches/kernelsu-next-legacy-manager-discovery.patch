@@ -1,0 +1,125 @@
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+index 49cbf64..9927877 100644
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -5,6 +5,7 @@
+ #include <linux/rcupdate.h>
+ #include <linux/sched.h>
+ #include <linux/workqueue.h>
++#include <linux/jiffies.h>
+ 
+ #include "policy/allowlist.h"
+ #include "policy/app_profile.h"
+@@ -12,6 +13,7 @@
+ #include "klog.h" // IWYU pragma: keep
+ #include "manager/manager_observer.h"
+ #include "manager/throne_tracker.h"
++#include "manager/manager_identity.h"
+ #include "hook/hook_manager.h"
+ #include "runtime/ksud.h"
+ #include "runtime/ksud_boot.h"
+@@ -94,6 +96,21 @@ module_param(allow_shell, bool, 0);
+ bool ksu_no_custom_rc = false;
+ module_param_named(norc, ksu_no_custom_rc, bool, 0);
+ 
++#ifndef CONFIG_KSU_DISABLE_MANAGER
++static struct delayed_work ksu_manager_discovery_work;
++static unsigned int ksu_manager_discovery_attempts;
++
++static void ksu_discover_manager(struct work_struct *work)
++{
++	if (ksu_is_manager_appid_valid())
++		return;
++
++	track_throne(false);
++	if (!ksu_is_manager_appid_valid() && ++ksu_manager_discovery_attempts < 12)
++		schedule_delayed_work(&ksu_manager_discovery_work, msecs_to_jiffies(5000));
++}
++#endif
++
+ #ifdef MODULE
+ bool ksu_bundled = false;
+ module_param_named(bundled, ksu_bundled, bool, 0);
+@@ -182,6 +199,11 @@ int __init kernelsu_init(void)
+ 		ksu_file_wrapper_init();
+ 	}
+ 
++#ifndef CONFIG_KSU_DISABLE_MANAGER
++	INIT_DELAYED_WORK(&ksu_manager_discovery_work, ksu_discover_manager);
++	schedule_delayed_work(&ksu_manager_discovery_work, msecs_to_jiffies(5000));
++#endif
++
+ #ifdef MODULE
+ #ifndef CONFIG_KSU_DEBUG
+ 	kobject_del(&THIS_MODULE->mkobj.kobj);
+@@ -192,6 +214,9 @@ int __init kernelsu_init(void)
+ 
+ void __exit kernelsu_exit(void)
+ {
++#ifndef CONFIG_KSU_DISABLE_MANAGER
++	cancel_delayed_work_sync(&ksu_manager_discovery_work);
++#endif
+ 	// Phase 1: Stop all hooks first to prevent new callbacks
+ 	ksu_syscall_hook_manager_exit();
+ 
+diff --git a/kernel/manager/throne_tracker.c b/kernel/manager/throne_tracker.c
+index 6cf7d62..4b9607d 100644
+--- a/kernel/manager/throne_tracker.c
++++ b/kernel/manager/throne_tracker.c
+@@ -4,6 +4,7 @@
+ #include <linux/err.h>
+ #include <linux/fs.h>
+ #include <linux/list.h>
++#include <linux/mutex.h>
+ #include <linux/slab.h>
+ #include <linux/string.h>
+ #include <linux/types.h>
+@@ -16,6 +17,7 @@
+ #include "manager/throne_tracker.h"
+ 
+ uid_t ksu_manager_appid = KSU_INVALID_APPID;
++static DEFINE_MUTEX(ksu_throne_scan_mutex);
+ 
+ #define SYSTEM_PACKAGES_LIST_PATH "/data/system/packages.list"
+ 
+@@ -262,7 +264,10 @@ static bool is_uid_exist(uid_t uid, char *package, void *data)
+ 
+ void track_throne(bool prune_only)
+ {
+-	const struct cred *old_cred = override_creds(ksu_cred);
++	const struct cred *old_cred;
++
++	mutex_lock(&ksu_throne_scan_mutex);
++	old_cred = override_creds(ksu_cred);
+ 	struct file *fp = filp_open(SYSTEM_PACKAGES_LIST_PATH, O_RDONLY, 0);
+ 	if (IS_ERR(fp)) {
+ 		pr_err("%s: open " SYSTEM_PACKAGES_LIST_PATH " failed: %ld\n", __func__,
+@@ -358,6 +363,7 @@ out:
+ 	}
+ out_revert_cred:
+ 	revert_creds(old_cred);
++	mutex_unlock(&ksu_throne_scan_mutex);
+ }
+ 
+ void __init ksu_throne_tracker_init()
+@@ -373,4 +379,4 @@ void __init ksu_throne_tracker_init()
+ void __exit ksu_throne_tracker_exit()
+ {
+ 	// nothing to do
+-}
+\ No newline at end of file
++}
+diff --git a/kernel/runtime/boot_event.c b/kernel/runtime/boot_event.c
+index 05c035f..87d578e 100644
+--- a/kernel/runtime/boot_event.c
++++ b/kernel/runtime/boot_event.c
+@@ -68,7 +68,8 @@ void on_boot_completed(void)
+ {
+     ksu_boot_completed = true;
+     pr_info("on_boot_completed!\n");
+-    track_throne(true);
++    /* A manager installed before this kernel boot has no rename event. */
++    track_throne(false);
+     ksu_selinux_hide_drop_backup_if_unused();
+     ksu_avc_spoof_late_init();
+ }

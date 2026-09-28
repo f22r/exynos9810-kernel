@@ -42,6 +42,7 @@ CR_DEFCONFIG=$CR_DIR/arch/$CR_ARCH/configs
 # Kernel Name and Version
 CR_VERSION=V1.12
 CR_KSU_VERSION=v3.4.0
+CR_F22R_REVISION=R2
 CR_NAME=DS-ACK
 # Thread count
 CR_JOBS=$(nproc --all)
@@ -233,8 +234,8 @@ fi
 
 BUILD_IMAGE_NAME()
 {
-	CR_IMAGE_NAME=$CR_NAME-$CR_VERSION-$CR_VARIANT-$CR_DATE-F22R
-	zver=$CR_NAME-$CR_VERSION-$CR_DATE-F22R
+	CR_IMAGE_NAME=$CR_NAME-$CR_VERSION-$CR_VARIANT-$CR_DATE-F22R-$CR_F22R_REVISION
+	zver=$CR_NAME-$CR_VERSION-$CR_DATE-F22R-$CR_F22R_REVISION
     
 }
 
@@ -316,15 +317,18 @@ BUILD_GENERATE_CONFIG()
       echo " Expected KernelSU-Next legacy commit 5e2f853"
       exit 1
     fi
-    CR_KSU_PATCH=$CR_DIR/patches/kernelsu-next-legacy-4.9.patch
-    if git -C "$CR_DIR/KernelSU-Next" apply --reverse --check "$CR_KSU_PATCH" 2>/dev/null; then
-      :
-    elif git -C "$CR_DIR/KernelSU-Next" apply --check "$CR_KSU_PATCH"; then
-      git -C "$CR_DIR/KernelSU-Next" apply "$CR_KSU_PATCH" || exit 1
-    else
-      echo " KernelSU-Next compatibility patch could not be applied"
-      exit 1
-    fi
+    for CR_KSU_PATCH in \
+      "$CR_DIR/patches/kernelsu-next-legacy-4.9.patch" \
+      "$CR_DIR/patches/kernelsu-next-legacy-manager-discovery.patch"; do
+      if git -C "$CR_DIR/KernelSU-Next" apply --reverse --check "$CR_KSU_PATCH" 2>/dev/null; then
+        :
+      elif git -C "$CR_DIR/KernelSU-Next" apply --check "$CR_KSU_PATCH"; then
+        git -C "$CR_DIR/KernelSU-Next" apply "$CR_KSU_PATCH" || exit 1
+      else
+        echo " KernelSU-Next patch could not be applied: $CR_KSU_PATCH"
+        exit 1
+      fi
+    done
     echo "CONFIG_KSU=y" >> $CR_DEFCONFIG/tmp_defconfig
     echo "CONFIG_KSU_MANUAL_HOOK=y" >> $CR_DEFCONFIG/tmp_defconfig
     CR_LOCALVERSION=$CR_IMAGE_NAME-$CR_KSU_VERSION
