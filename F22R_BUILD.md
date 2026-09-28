@@ -1,5 +1,15 @@
 # F22R KernelSU-Next build
 
+## Current focus: R4 for G965F
+
+Development now prioritizes Galaxy S9+ G965F. R3 was reported booting with Manager showing **Working / BUILT-IN (LEGACY)** and driver code 33296. Module entries were visible, but a subsequent Zygisk loading report still needs device logs; this is not proof that every module runs correctly.
+
+R4 sets the upstream-supported `KSU_VERSION_TAG_OVERRIDE=v3.4.0`. The pinned legacy checkout had no describable Git tag, so R3 compiled an empty version label and Manager displayed v0.0.0. The numeric driver version remains derived from the same pinned source.
+
+Select target `2` (the new default), compiler `8`, Enforcing `2`, and KernelSU `y`. A single G965F recovery ZIP is created before the original boot-image packaging step. It contains only the G965F kernel/DTB and adapts the upstream installer to reject other models while retaining the phone's existing boot ramdisk. Other devices will be compiled later. R4 addresses version labeling and packaging; it does not claim a Zygisk fix.
+
+The displayed kernel version ends in `F22R-R4-v3.4.0` without `-KSU`. Previous revision details below are historical.
+
 This is an unofficial F22R modification of [duhansysl's DS-ACK Exynos 9810 kernel V1.12](https://github.com/duhansysl/exynos9810-kernel/releases/tag/V1.12). The DS-ACK name identifies the upstream kernel; F22R identifies this modification. It is not an upstream DS-ACK release.
 
 The target package is the regular `DS-ACK-V1.12-08.05.2026-Enforcing-KernelSU.zip` for Android 11–14. This branch does not build the separately labeled OneUI7 or Q release variants.

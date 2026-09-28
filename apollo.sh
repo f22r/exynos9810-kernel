@@ -42,7 +42,9 @@ CR_DEFCONFIG=$CR_DIR/arch/$CR_ARCH/configs
 # Kernel Name and Version
 CR_VERSION=V1.12
 CR_KSU_VERSION=v3.4.0
-CR_F22R_REVISION=R3
+CR_F22R_REVISION=R4
+# Use the pinned legacy release label even when the submodule has no Git tags.
+export KSU_VERSION_TAG_OVERRIDE=$CR_KSU_VERSION
 CR_NAME=DS-ACK
 # Thread count
 CR_JOBS=$(nproc --all)
@@ -78,7 +80,7 @@ CR_SELINUX="2"
 CR_KSU="n"
 CR_CLEAN="n"
 # Default Compilation
-DEFAULT_TARGET=3   # crownlte
+DEFAULT_TARGET=2   # star2lte: prioritize the user-tested G965F
 DEFAULT_COMPILER=3 # clang18
 DEFAULT_SELINUX=2  # enforce
 DEFAULT_KSU=y      # enabled
@@ -521,6 +523,9 @@ BUILD()
 	echo " Start Build ZIP Process "
 	PACK_KERNEL_ZIP
 	else
+	if [ "$CR_VARIANT" = "G965F" ] && [ "$CR_KSU" = "y" ]; then
+		python3 "$CR_DIR/tools/f22r-package-g965f.py" "$CR_DIR" "$CR_IMAGE_NAME" || exit 1
+	fi
 	PACK_BOOT_IMG
 	BUILD_OUT
 	fi
