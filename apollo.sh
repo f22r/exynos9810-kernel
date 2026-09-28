@@ -40,8 +40,9 @@ CR_DTB=$CR_DIR/arch/$CR_ARCH/boot/dtb.img
 # defconfig dir
 CR_DEFCONFIG=$CR_DIR/arch/$CR_ARCH/configs
 # Kernel Name and Version
-CR_VERSION=V1.12-KSUN3.4.0
-CR_NAME=DS-ACK-F22R
+CR_VERSION=V1.12
+CR_KSU_VERSION=v3.4.0
+CR_NAME=DS-ACK
 # Thread count
 CR_JOBS=$(nproc --all)
 # Target Android version
@@ -178,7 +179,7 @@ else
 fi
 
 # Clang Features (18 and higher)
-if [ $CR_COMPILER -ge 3 ]; then
+if [ $CR_COMPILER -ge 3 ] && [ $CR_COMPILER -le 7 ]; then
 export CONFIG_THINLTO=y
 export CONFIG_UNIFIEDLTO=y
 export CONFIG_LLVM_MLGO_REGISTER=y
@@ -232,8 +233,8 @@ fi
 
 BUILD_IMAGE_NAME()
 {
-	CR_IMAGE_NAME=$CR_NAME-$CR_VERSION-$CR_VARIANT-$CR_DATE
-	zver=$CR_NAME-$CR_VERSION-$CR_DATE
+	CR_IMAGE_NAME=$CR_NAME-$CR_VERSION-$CR_VARIANT-$CR_DATE-F22R
+	zver=$CR_NAME-$CR_VERSION-$CR_DATE-F22R
     
 }
 
@@ -307,16 +308,31 @@ BUILD_GENERATE_CONFIG()
     zver=$zver-Permissive
   else
     echo " Building SELinux Enforced Kernel"
+    zver=$zver-Enforcing
   fi
   if [[ "$CR_KSU" =~ ^[yY]$ ]]; then
     echo " Building KernelSU"
-    # KernelSU-Next v3.4 requires kprobes; keep non-KSU builds unchanged.
-    sed -i 's/^# CONFIG_KPROBES is not set$/CONFIG_KPROBES=y/' $CR_DEFCONFIG/tmp_defconfig
+    if [ "$(git -C "$CR_DIR/KernelSU-Next" rev-parse HEAD 2>/dev/null)" != "5e2f85327336185a8330429422ad04b84c6e6d38" ]; then
+      echo " Expected KernelSU-Next legacy commit 5e2f853"
+      exit 1
+    fi
+    CR_KSU_PATCH=$CR_DIR/patches/kernelsu-next-legacy-4.9.patch
+    if git -C "$CR_DIR/KernelSU-Next" apply --reverse --check "$CR_KSU_PATCH" 2>/dev/null; then
+      :
+    elif git -C "$CR_DIR/KernelSU-Next" apply --check "$CR_KSU_PATCH"; then
+      git -C "$CR_DIR/KernelSU-Next" apply "$CR_KSU_PATCH" || exit 1
+    else
+      echo " KernelSU-Next compatibility patch could not be applied"
+      exit 1
+    fi
     echo "CONFIG_KSU=y" >> $CR_DEFCONFIG/tmp_defconfig
-    CR_IMAGE_NAME=$CR_IMAGE_NAME-KSU
-    zver=$zver-KernelSU
+    echo "CONFIG_KSU_MANUAL_HOOK=y" >> $CR_DEFCONFIG/tmp_defconfig
+    CR_LOCALVERSION=$CR_IMAGE_NAME-$CR_KSU_VERSION
+    CR_IMAGE_NAME=$CR_IMAGE_NAME-KernelSU-Next-$CR_KSU_VERSION
+    zver=$zver-KernelSU-Next-$CR_KSU_VERSION
   else
     echo "# CONFIG_KSU is not set" >> $CR_DEFCONFIG/tmp_defconfig
+    CR_LOCALVERSION=$CR_IMAGE_NAME
   fi
   echo " $CR_VARIANT config generated "
   echo " "
@@ -359,7 +375,7 @@ BUILD_ZIMAGE()
 	echo "----------------------------------------------"
 	echo " "
 	echo "Building zImage for $CR_VARIANT"
-	export LOCALVERSION=-${CR_IMAGE_NAME%-KSU}
+	export LOCALVERSION=-$CR_LOCALVERSION
 	echo "Make $CR_CONFIG"
 	$compile $CR_CONFIG
 	echo "Make Kernel with $CR_COMPILER_ARG"

@@ -35,6 +35,7 @@ if echo $device | grep '[GN]96[05][FN]'; then
     
     ui_print " "
     ui_print "fkv Installer"
+    ui_print "Unofficial F22R build; original DS-ACK by duhansysl"
     ui_print " "
 
     ui_print "Detecting device..."
@@ -75,7 +76,7 @@ if echo $device | grep '[GN]96[05][FN]'; then
         exit
     fi
 
-    ui_print "- Installing DS-ACK-V1 Kernel"
+    ui_print "- Installing F22R build based on DS-ACK V1.12"
     cd /tmp/floyd && rm -rf /tmp/floydKernel && mkdir -p /tmp/floydKernel && cd /tmp/floydKernel
     cp /tmp/floyd/tools/magiskboot imgtool && chmod 777 imgtool
     dd if=$boot of=/tmp/floydKernel/old-boot.img bs=4096
@@ -101,4 +102,3 @@ else
     ui_print " "
     exit 1
 fi
-
