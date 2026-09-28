@@ -1,6 +1,14 @@
 # F22R KernelSU-Next build
 
-## Current focus: R4 for G965F
+## Current focus: R5 G965F candidate
+
+The device reports `ksud 3.4.0 (uapi: 4)`. Recent logcat repeatedly shows `debug su` failing to obtain a KernelSU driver descriptor. The source installed the Manager descriptor with `O_CLOEXEC`, but its replacement-descriptor request admitted only UID 0. R5 permits that request for UID 0 or the already authenticated Manager (`is_manager()`), preserving denial for other app UIDs and all existing ioctl permission checks.
+
+R5 also connects the existing legacy `newfstat` and `fstat64` return hooks after successful stat copying. These expose the appended init.rc size to init; failed stat operations remain unchanged. This completes a missing manual-integration path, but the supplied current dmesg starts at uptime 406 seconds and cannot establish which early-boot event failed. The archived successful module logs were from an older boot at 18:35 and are not evidence of R4 success.
+
+These are candidate repairs, not verified on-device Zygisk success. Only G965F is built. SELinux remains Enforcing; no metamodule or SUSFS is bundled. The version suffix is `F22R-R5-v3.4.0` without `-KSU`.
+
+## R4 for G965F
 
 Development now prioritizes Galaxy S9+ G965F. R3 was reported booting with Manager showing **Working / BUILT-IN (LEGACY)** and driver code 33296. Module entries were visible, but a subsequent Zygisk loading report still needs device logs; this is not proof that every module runs correctly.
 

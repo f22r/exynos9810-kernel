@@ -1,0 +1,15 @@
+diff --git a/kernel/supercall/supercall.c b/kernel/supercall/supercall.c
+--- a/kernel/supercall/supercall.c
++++ b/kernel/supercall/supercall.c
+@@ -142,7 +142,10 @@
+ 		 * the always_allow GET_INFO / CHECK_SAFEMODE ioctls).
+ 		 * Only the root-side helpers (ksud, ksuinit) request it.
+ 		 */
+-		if (current_uid().val != 0)
++		/* Manager helpers exec with the manager UID after CLOEXEC closes
++		 * the inherited descriptor. Only root or the authenticated manager
++		 * may obtain a replacement; other application UIDs remain denied. */
++		if (current_uid().val != 0 && !is_manager())
+ 			return 0;
+ 
+ 		tw = kzalloc(sizeof(*tw), GFP_ATOMIC);

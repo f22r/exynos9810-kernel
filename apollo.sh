@@ -42,7 +42,7 @@ CR_DEFCONFIG=$CR_DIR/arch/$CR_ARCH/configs
 # Kernel Name and Version
 CR_VERSION=V1.12
 CR_KSU_VERSION=v3.4.0
-CR_F22R_REVISION=R4
+CR_F22R_REVISION=R5
 # Use the pinned legacy release label even when the submodule has no Git tags.
 export KSU_VERSION_TAG_OVERRIDE=$CR_KSU_VERSION
 CR_NAME=DS-ACK
@@ -323,7 +323,8 @@ BUILD_GENERATE_CONFIG()
       "$CR_DIR/patches/kernelsu-next-legacy-4.9.patch" \
       "$CR_DIR/patches/kernelsu-next-legacy-manager-discovery.patch" \
       "$CR_DIR/patches/kernelsu-next-legacy-read-compat.patch" \
-      "$CR_DIR/patches/kernelsu-next-legacy-execve-compat.patch"; do
+      "$CR_DIR/patches/kernelsu-next-legacy-execve-compat.patch" \
+      "$CR_DIR/patches/kernelsu-next-legacy-manager-fd.patch"; do
       if git -C "$CR_DIR/KernelSU-Next" apply --reverse --check "$CR_KSU_PATCH" 2>/dev/null; then
         :
       elif git -C "$CR_DIR/KernelSU-Next" apply --check "$CR_KSU_PATCH"; then
