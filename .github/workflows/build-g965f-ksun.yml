@@ -33,7 +33,7 @@ jobs:
         run: |
           set -o pipefail
           printf '2\n8\n2\ny\nn\n' | bash apollo.sh 2>&1 | tee build.log
-          image=$(find Apollo/Product -maxdepth 1 -type f -name 'DS-ACK-V1.12-G965F-*-KSU.img' -print -quit)
+          image=$(find Apollo/Product -maxdepth 1 -type f -name 'DS-ACK-F22R-V1.12-KSUN3.4.0-G965F-*-KSU.img' -print -quit)
           test -n "$image"
           test -s "$image"
           echo "Built image: $image"
@@ -45,5 +45,5 @@ jobs:
           name: g965f-ksun-build
           path: |
             build.log
-            Apollo/Product/DS-ACK-V1.12-G965F-*-KSU.img
+            Apollo/Product/DS-ACK-F22R-V1.12-KSUN3.4.0-G965F-*-KSU.img
           if-no-files-found: warn
