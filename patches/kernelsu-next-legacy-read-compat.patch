@@ -1,0 +1,106 @@
+diff --git a/kernel/manager/apk_sign.c b/kernel/manager/apk_sign.c
+--- a/kernel/manager/apk_sign.c
++++ b/kernel/manager/apk_sign.c
+@@ -21,6 +21,7 @@
+ 
+ #include "manager/apk_sign.h"
+ #include "uapi/app_profile.h"
++#include "compat/kernel_compat.h"
+ #include "klog.h" // IWYU pragma: keep
+ 
+ struct sdesc {
+@@ -80,7 +81,7 @@
+ 	if (*pos < 0 || *pos > end || size > (size_t)(end - *pos))
+ 		return false;
+ 
+-	return kernel_read(fp, buffer, size, pos) == (ssize_t)size;
++	return ksu_kernel_read_compat(fp, buffer, size, pos) == (ssize_t)size;
+ }
+ 
+ static bool read_length_prefixed_end(struct file *fp, loff_t *pos, loff_t container_end, loff_t *value_end)
+@@ -171,7 +172,7 @@
+ 	// https://en.wikipedia.org/wiki/Zip_(file_format)#End_of_central_directory_record_(EOCD)
+ 	// Buffered backward search (single read) instead of the upstream
+ 	// byte-by-byte loop: scanning /data/app at boot with thousands of
+-	// 2-byte kernel_read() calls stalls the device for ages.
++	// 2-byte ksu_kernel_read_compat() calls stalls the device for ages.
+ 	{
+ 		unsigned char *eocd_buffer;
+ 		long search_size;
+@@ -190,7 +191,7 @@
+ 		}
+ 
+ 		pos = file_size - search_size;
+-		kernel_read(fp, eocd_buffer, search_size, &pos);
++		ksu_kernel_read_compat(fp, eocd_buffer, search_size, &pos);
+ 
+ 		if (search_size >= eocd_min_size) {
+ 			long j;
+diff --git a/kernel/manager/throne_tracker.c b/kernel/manager/throne_tracker.c
+--- a/kernel/manager/throne_tracker.c
++++ b/kernel/manager/throne_tracker.c
+@@ -12,6 +12,7 @@
+ 
+ #include "policy/allowlist.h"
+ #include "manager/apk_sign.h"
++#include "compat/kernel_compat.h"
+ #include "klog.h" // IWYU pragma: keep
+ #include "manager/manager_identity.h"
+ #include "manager/throne_tracker.h"
+@@ -283,13 +284,13 @@
+ 	loff_t line_start = 0;
+ 	char buf[KSU_MAX_PACKAGE_NAME];
+ 	for (;;) {
+-		ssize_t count = kernel_read(fp, &chr, sizeof(chr), &pos);
++		ssize_t count = ksu_kernel_read_compat(fp, &chr, sizeof(chr), &pos);
+ 		if (count != sizeof(chr))
+ 			break;
+ 		if (chr != '\n')
+ 			continue;
+ 
+-		count = kernel_read(fp, buf, sizeof(buf) - 1, &line_start);
++		count = ksu_kernel_read_compat(fp, buf, sizeof(buf) - 1, &line_start);
+ 		if (count <= 0) {
+ 			break;
+ 		}
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -134,7 +134,7 @@
+ 		goto out_close_file;
+ 	}
+ 
+-	r = kernel_read(f, module_rc_buf, fsize, &pos);
++	r = ksu_kernel_read_compat(f, module_rc_buf, fsize, &pos);
+ 
+ 	if (r <= 0) {
+ 		pr_err("module rc: read failed: %zd\n", r);
+diff --git a/kernel/policy/allowlist.c b/kernel/policy/allowlist.c
+--- a/kernel/policy/allowlist.c
++++ b/kernel/policy/allowlist.c
+@@ -566,14 +566,14 @@
+ 	}
+ 
+ 	// verify magic
+-	if (kernel_read(fp, &magic, sizeof(magic), &off) != sizeof(magic) ||
++	if (ksu_kernel_read_compat(fp, &magic, sizeof(magic), &off) != sizeof(magic) ||
+ 	    magic != FILE_MAGIC) {
+ 		pr_err("allowlist file invalid: %d!\n", magic);
+ 		goto exit;
+ 	}
+ 
+ 	// get file version
+-	if (kernel_read(fp, &version, sizeof(version), &off) != sizeof(version)) {
++	if (ksu_kernel_read_compat(fp, &version, sizeof(version), &off) != sizeof(version)) {
+ 		pr_err("allowlist read version: %d failed\n", version);
+ 		goto exit;
+ 	}
+@@ -591,7 +591,7 @@
+ 	while (true) {
+ 		struct app_profile profile;
+ 
+-		ret = kernel_read(fp, &profile, app_profile_size, &off);
++		ret = ksu_kernel_read_compat(fp, &profile, app_profile_size, &off);
+ 
+ 		if (ret != app_profile_size) {
+ 			if (ret != 0)

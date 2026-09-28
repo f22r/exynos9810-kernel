@@ -42,7 +42,7 @@ CR_DEFCONFIG=$CR_DIR/arch/$CR_ARCH/configs
 # Kernel Name and Version
 CR_VERSION=V1.12
 CR_KSU_VERSION=v3.4.0
-CR_F22R_REVISION=R2
+CR_F22R_REVISION=R3
 CR_NAME=DS-ACK
 # Thread count
 CR_JOBS=$(nproc --all)
@@ -319,7 +319,9 @@ BUILD_GENERATE_CONFIG()
     fi
     for CR_KSU_PATCH in \
       "$CR_DIR/patches/kernelsu-next-legacy-4.9.patch" \
-      "$CR_DIR/patches/kernelsu-next-legacy-manager-discovery.patch"; do
+      "$CR_DIR/patches/kernelsu-next-legacy-manager-discovery.patch" \
+      "$CR_DIR/patches/kernelsu-next-legacy-read-compat.patch" \
+      "$CR_DIR/patches/kernelsu-next-legacy-execve-compat.patch"; do
       if git -C "$CR_DIR/KernelSU-Next" apply --reverse --check "$CR_KSU_PATCH" 2>/dev/null; then
         :
       elif git -C "$CR_DIR/KernelSU-Next" apply --check "$CR_KSU_PATCH"; then
