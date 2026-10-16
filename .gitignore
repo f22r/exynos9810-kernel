@@ -158,3 +158,6 @@ toolchain/*
 drivers/kernelsu/*
 
 
+
+# Generated kernel header staging tree.
+/kernel/kheaders_data.tar.xz.tmp/
