@@ -19,6 +19,8 @@
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <linux/preempt.h>
+#include <linux/irqflags.h>
 #include <linux/errno.h>
 #include "avtab.h"
 #include "policydb.h"
@@ -70,15 +72,17 @@ avtab_insert_node(struct avtab *h, int hvalue,
 		  struct avtab_node *prev, struct avtab_node *cur,
 		  struct avtab_key *key, struct avtab_datum *datum)
 {
+	/* KernelSU legacy live updates execute under stop_machine. */
+	gfp_t gfp = (in_atomic() || irqs_disabled()) ? GFP_ATOMIC : GFP_KERNEL;
 	struct avtab_node *newnode;
 	struct avtab_extended_perms *xperms;
-	newnode = kmem_cache_zalloc(avtab_node_cachep, GFP_KERNEL);
+	newnode = kmem_cache_zalloc(avtab_node_cachep, gfp);
 	if (newnode == NULL)
 		return NULL;
 	newnode->key = *key;
 
 	if (key->specified & AVTAB_XPERMS) {
-		xperms = kmem_cache_zalloc(avtab_xperms_cachep, GFP_KERNEL);
+		xperms = kmem_cache_zalloc(avtab_xperms_cachep, gfp);
 		if (xperms == NULL) {
 			kmem_cache_free(avtab_node_cachep, newnode);
 			return NULL;
@@ -95,7 +99,7 @@ avtab_insert_node(struct avtab *h, int hvalue,
 	} else {
 		newnode->next = flex_array_get_ptr(h->htable, hvalue);
 		if (flex_array_put_ptr(h->htable, hvalue, newnode,
-				       GFP_KERNEL|__GFP_ZERO)) {
+				       gfp|__GFP_ZERO)) {
 			kmem_cache_free(avtab_node_cachep, newnode);
 			return NULL;
 		}

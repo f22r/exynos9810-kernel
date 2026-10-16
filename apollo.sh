@@ -40,15 +40,21 @@ CR_DTB=$CR_DIR/arch/$CR_ARCH/boot/dtb.img
 # defconfig dir
 CR_DEFCONFIG=$CR_DIR/arch/$CR_ARCH/configs
 # Kernel Name and Version
-CR_VERSION=V1.12-KSUN3.4.0
-CR_NAME=DS-ACK-F22R
+CR_VERSION=V1.12
+CR_KSU_VERSION=v3.4.2
+CR_ONEUI7=${CR_ONEUI7:-n}
+CR_JOBS_LIMIT=${CR_JOBS_LIMIT:-8}
+# Use the pinned legacy release label even when the submodule has no Git tags.
+export KSU_VERSION_TAG_OVERRIDE=$CR_KSU_VERSION
+export KSU_VERSION_OVERRIDE=33355
+CR_NAME=DS-ACK
 # Thread count
-CR_JOBS=$(nproc --all)
+CR_JOBS=$CR_JOBS_LIMIT
 # Target Android version
 CR_ANDROID=q
 CR_PLATFORM=13.0.0
 # Current Date
-CR_DATE=$(TZ=Asia/Jakarta date +%d.%m.%Y)
+CR_DATE=${F22R_BUILD_DATE:-$(TZ=Asia/Jakarta date +%d.%m.%Y)}
 # General init
 export ANDROID_MAJOR_VERSION=$CR_ANDROID
 export PLATFORM_VERSION=$CR_PLATFORM
@@ -76,7 +82,7 @@ CR_SELINUX="2"
 CR_KSU="n"
 CR_CLEAN="n"
 # Default Compilation
-DEFAULT_TARGET=3   # crownlte
+DEFAULT_TARGET=2   # star2lte: prioritize the user-tested G965F
 DEFAULT_COMPILER=3 # clang18
 DEFAULT_SELINUX=2  # enforce
 DEFAULT_KSU=y      # enabled
@@ -178,7 +184,7 @@ else
 fi
 
 # Clang Features (18 and higher)
-if [ $CR_COMPILER -ge 3 ]; then
+if [ $CR_COMPILER -ge 3 ] && [ $CR_COMPILER -le 7 ]; then
 export CONFIG_THINLTO=y
 export CONFIG_UNIFIEDLTO=y
 export CONFIG_LLVM_MLGO_REGISTER=y
@@ -232,8 +238,8 @@ fi
 
 BUILD_IMAGE_NAME()
 {
-	CR_IMAGE_NAME=$CR_NAME-$CR_VERSION-$CR_VARIANT-$CR_DATE
-	zver=$CR_NAME-$CR_VERSION-$CR_DATE
+	CR_IMAGE_NAME=$CR_NAME-$CR_VERSION-$CR_VARIANT-$CR_DATE-F22R
+	zver=$CR_NAME-$CR_VERSION-$CR_DATE-F22R
     
 }
 
@@ -241,7 +247,7 @@ BUILD_IMAGE_NAME()
 BUILD_OPTIONS()
 {
 	# KSU Version
-	KSU_VERSION=$( [ -f "drivers/kernelsu/Makefile" ] && grep -oP '(?<=-DKSU_VERSION=)[0-9]+' drivers/kernelsu/Makefile )
+	KSU_VERSION=33355
 	echo "----------------------------------------------"
 	echo " Apollo Kernel Build Options "
 	echo " "
@@ -307,16 +313,37 @@ BUILD_GENERATE_CONFIG()
     zver=$zver-Permissive
   else
     echo " Building SELinux Enforced Kernel"
+    zver=$zver-Enforcing
   fi
   if [[ "$CR_KSU" =~ ^[yY]$ ]]; then
     echo " Building KernelSU"
-    # KernelSU-Next v3.4 requires kprobes; keep non-KSU builds unchanged.
-    sed -i 's/^# CONFIG_KPROBES is not set$/CONFIG_KPROBES=y/' $CR_DEFCONFIG/tmp_defconfig
+    if [ "$(git -C "$CR_DIR/KernelSU-Next" rev-parse HEAD)" != "d51ca52c6d370d8e9d62aabde10e41f17ff3ae94" ]; then
+      echo "Expected pinned KernelSU-Next legacy d51ca52c (3.4.2 backports)"
+      exit 1
+    fi
+    CR_KSU_PATCH="$CR_DIR/patches/kernelsu-next-v3.4.2-exynos9810.patch"
+    if git -C "$CR_DIR/KernelSU-Next" apply --reverse --check "$CR_KSU_PATCH" 2>/dev/null; then
+      :
+    else
+      git -C "$CR_DIR/KernelSU-Next" apply --check "$CR_KSU_PATCH" || exit 1
+      git -C "$CR_DIR/KernelSU-Next" apply "$CR_KSU_PATCH" || exit 1
+    fi
     echo "CONFIG_KSU=y" >> $CR_DEFCONFIG/tmp_defconfig
-    CR_IMAGE_NAME=$CR_IMAGE_NAME-KSU
-    zver=$zver-KernelSU
+    echo "CONFIG_KSU_MANUAL_HOOK=y" >> $CR_DEFCONFIG/tmp_defconfig
+    CR_LOCALVERSION=$CR_IMAGE_NAME-$CR_KSU_VERSION
+    CR_IMAGE_NAME=$CR_IMAGE_NAME-KernelSU-Next-$CR_KSU_VERSION
+    zver=$zver-KernelSU-Next-$CR_KSU_VERSION
   else
     echo "# CONFIG_KSU is not set" >> $CR_DEFCONFIG/tmp_defconfig
+    CR_LOCALVERSION=$CR_IMAGE_NAME
+  fi
+  if [ "$CR_ONEUI7" = "y" ]; then
+    echo "CONFIG_EXTREMEROM_WORKAROUNDS=y" >> $CR_DEFCONFIG/tmp_defconfig
+    echo "CONFIG_ONEUI7_WORKAROUND=y" >> $CR_DEFCONFIG/tmp_defconfig
+    CR_LOCALVERSION=$CR_LOCALVERSION-OneUI7
+  else
+    echo "# CONFIG_EXTREMEROM_WORKAROUNDS is not set" >> $CR_DEFCONFIG/tmp_defconfig
+    echo "# CONFIG_ONEUI7_WORKAROUND is not set" >> $CR_DEFCONFIG/tmp_defconfig
   fi
   echo " $CR_VARIANT config generated "
   echo " "
@@ -327,7 +354,7 @@ BUILD_GENERATE_CONFIG()
 BUILD_OUT()
 {
 # KSU Version
-	KSU_VERSION=$( [ -f "drivers/kernelsu/Makefile" ] && grep -oP '(?<=-DKSU_VERSION=)[0-9]+' drivers/kernelsu/Makefile )
+	KSU_VERSION=33355
   echo "----------------------------------------------"
   echo " Kernel		- $CR_IMAGE_NAME"
   echo " Device		- $CR_VARIANT"
@@ -359,11 +386,11 @@ BUILD_ZIMAGE()
 	echo "----------------------------------------------"
 	echo " "
 	echo "Building zImage for $CR_VARIANT"
-	export LOCALVERSION=-${CR_IMAGE_NAME%-KSU}
+	export LOCALVERSION=-$CR_LOCALVERSION
 	echo "Make $CR_CONFIG"
-	$compile $CR_CONFIG
+	$compile $CR_CONFIG || return 1
 	echo "Make Kernel with $CR_COMPILER_ARG"
-	$compile -j$CR_JOBS
+	$compile -j$CR_JOBS || return 1
 	if [ ! -e $CR_KERNEL ]; then
 	exit 0;
 	echo "Image Failed to Compile"
@@ -499,6 +526,9 @@ BUILD()
 	echo " Start Build ZIP Process "
 	PACK_KERNEL_ZIP
 	else
+	if [ "$CR_VARIANT" = "G965F" ] && [ "$CR_KSU" = "y" ]; then
+		python3 "$CR_DIR/tools/f22r-package-g965f.py" "$CR_DIR" "$CR_IMAGE_NAME" || exit 1
+	fi
 	PACK_BOOT_IMG
 	BUILD_OUT
 	fi

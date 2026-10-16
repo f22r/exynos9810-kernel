@@ -5,6 +5,8 @@
  */
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <linux/preempt.h>
+#include <linux/irqflags.h>
 #include <linux/errno.h>
 #include <linux/sched.h>
 #include "hashtab.h"
@@ -38,10 +40,13 @@ struct hashtab *hashtab_create(u32 (*hash_value)(struct hashtab *h, const void *
 
 int hashtab_insert(struct hashtab *h, void *key, void *datum)
 {
+	/* KernelSU legacy live updates execute under stop_machine. */
+	gfp_t gfp = (in_atomic() || irqs_disabled()) ? GFP_ATOMIC : GFP_KERNEL;
 	u32 hvalue;
 	struct hashtab_node *prev, *cur, *newnode;
 
-	cond_resched();
+	if (gfp == GFP_KERNEL)
+		cond_resched();
 
 	if (!h || h->nel == HASHTAB_MAX_NODES)
 		return -EINVAL;
@@ -57,7 +62,7 @@ int hashtab_insert(struct hashtab *h, void *key, void *datum)
 	if (cur && (h->keycmp(h, key, cur->key) == 0))
 		return -EEXIST;
 
-	newnode = kzalloc(sizeof(*newnode), GFP_KERNEL);
+	newnode = kzalloc(sizeof(*newnode), gfp);
 	if (newnode == NULL)
 		return -ENOMEM;
 	newnode->key = key;

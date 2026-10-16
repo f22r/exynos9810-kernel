@@ -1,0 +1,377 @@
+diff --git a/kernel/compat/kernel_compat.c b/kernel/compat/kernel_compat.c
+index 6deb054f..634421f5 100644
+--- a/kernel/compat/kernel_compat.c
++++ b/kernel/compat/kernel_compat.c
+@@ -142,8 +142,8 @@ static void *__kvmalloc(size_t size, gfp_t flags)
+ 
+ 	/* do not attempt kmalloc if we need more than 16 pages at once */
+ 	if (size <= (16 * PAGE_SIZE))
+-		buffer = kmalloc(size, flags | GFP_NOIO | __GFP_NOWARN);
+-	if (!buffer) {
++		buffer = kmalloc(size, flags | __GFP_NOWARN);
++	if (!buffer && (flags & __GFP_DIRECT_RECLAIM)) {
+ 		if (flags & __GFP_ZERO)
+ 			buffer = vzalloc(size);
+ 		else
+diff --git a/kernel/compat/kernel_compat.h b/kernel/compat/kernel_compat.h
+index 090aab85..7eaedd21 100644
+--- a/kernel/compat/kernel_compat.h
++++ b/kernel/compat/kernel_compat.h
+@@ -68,8 +68,9 @@ extern void *ksu_compat_kvrealloc(const void *p, size_t oldsize, size_t newsize,
+ static inline void *ksu_kvmalloc(size_t size, gfp_t flags)
+ {
+ 	void *buf = kmalloc(size, flags);
+-	if (!buf)
+-		buf = vmalloc(size);
++	/* vmalloc may sleep; never fall back from an atomic allocation. */
++	if (!buf && (flags & __GFP_DIRECT_RECLAIM))
++		buf = (flags & __GFP_ZERO) ? vzalloc(size) : vmalloc(size);
+ 	
+ 	return buf;
+ }
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+index 9be09872..fac726a4 100644
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -5,6 +5,7 @@
+ #include <linux/rcupdate.h>
+ #include <linux/sched.h>
+ #include <linux/workqueue.h>
++#include <linux/jiffies.h>
+ 
+ #include "policy/allowlist.h"
+ #include "policy/app_profile.h"
+@@ -12,6 +13,7 @@
+ #include "klog.h" // IWYU pragma: keep
+ #include "manager/manager_observer.h"
+ #include "manager/throne_tracker.h"
++#include "manager/manager_identity.h"
+ #include "hook/hook_manager.h"
+ #include "runtime/ksud.h"
+ #include "runtime/ksud_boot.h"
+@@ -95,6 +97,21 @@ module_param(allow_shell, bool, 0);
+ bool ksu_no_custom_rc = false;
+ module_param_named(norc, ksu_no_custom_rc, bool, 0);
+ 
++#ifndef CONFIG_KSU_DISABLE_MANAGER
++static struct delayed_work ksu_manager_discovery_work;
++static unsigned int ksu_manager_discovery_attempts;
++
++static void ksu_discover_manager(struct work_struct *work)
++{
++	if (ksu_is_manager_appid_valid())
++		return;
++
++	track_throne(false);
++	if (!ksu_is_manager_appid_valid() && ++ksu_manager_discovery_attempts < 12)
++		schedule_delayed_work(&ksu_manager_discovery_work, msecs_to_jiffies(5000));
++}
++#endif
++
+ #ifdef MODULE
+ bool ksu_bundled = false;
+ module_param_named(bundled, ksu_bundled, bool, 0);
+@@ -192,6 +209,11 @@ int __init kernelsu_init(void)
+ 		ksu_file_wrapper_init();
+ 	}
+ 
++#ifndef CONFIG_KSU_DISABLE_MANAGER
++	INIT_DELAYED_WORK(&ksu_manager_discovery_work, ksu_discover_manager);
++	schedule_delayed_work(&ksu_manager_discovery_work, msecs_to_jiffies(5000));
++#endif
++
+ #ifdef MODULE
+ #ifndef CONFIG_KSU_DEBUG
+ 	kobject_del(&THIS_MODULE->mkobj.kobj);
+@@ -202,6 +224,9 @@ int __init kernelsu_init(void)
+ 
+ void __exit kernelsu_exit(void)
+ {
++#ifndef CONFIG_KSU_DISABLE_MANAGER
++	cancel_delayed_work_sync(&ksu_manager_discovery_work);
++#endif
+ 	// Phase 1: Stop all hooks first to prevent new callbacks
+ 	ksu_syscall_hook_manager_exit();
+ 
+diff --git a/kernel/manager/apk_sign.c b/kernel/manager/apk_sign.c
+index 262a9248..29551863 100644
+--- a/kernel/manager/apk_sign.c
++++ b/kernel/manager/apk_sign.c
+@@ -21,6 +21,7 @@
+ 
+ #include "manager/apk_sign.h"
+ #include "uapi/app_profile.h"
++#include "compat/kernel_compat.h"
+ #include "klog.h" // IWYU pragma: keep
+ 
+ struct sdesc {
+@@ -80,7 +81,7 @@ static bool read_exact(struct file *fp, void *buffer, size_t size, loff_t *pos,
+ 	if (*pos < 0 || *pos > end || size > (size_t)(end - *pos))
+ 		return false;
+ 
+-	return kernel_read(fp, buffer, size, pos) == (ssize_t)size;
++	return ksu_kernel_read_compat(fp, buffer, size, pos) == (ssize_t)size;
+ }
+ 
+ static bool read_length_prefixed_end(struct file *fp, loff_t *pos, loff_t container_end, loff_t *value_end)
+@@ -171,7 +172,7 @@ static __always_inline bool check_v2_signature(char *path,
+ 	// https://en.wikipedia.org/wiki/Zip_(file_format)#End_of_central_directory_record_(EOCD)
+ 	// Buffered backward search (single read) instead of the upstream
+ 	// byte-by-byte loop: scanning /data/app at boot with thousands of
+-	// 2-byte kernel_read() calls stalls the device for ages.
++	// 2-byte ksu_kernel_read_compat() calls stalls the device for ages.
+ 	{
+ 		unsigned char *eocd_buffer;
+ 		long search_size;
+@@ -191,7 +192,7 @@ static __always_inline bool check_v2_signature(char *path,
+ 		memset(eocd_buffer, 0, search_size);
+ 
+ 		pos = file_size - search_size;
+-		if (kernel_read(fp, eocd_buffer, search_size, &pos) != search_size) {
++		if (ksu_kernel_read_compat(fp, eocd_buffer, search_size, &pos) != search_size) {
+ 			kvfree(eocd_buffer);
+ 			goto clean;
+ 		}
+diff --git a/kernel/manager/throne_tracker.c b/kernel/manager/throne_tracker.c
+index a58ef960..c43ba0bd 100644
+--- a/kernel/manager/throne_tracker.c
++++ b/kernel/manager/throne_tracker.c
+@@ -1,3 +1,4 @@
++#include "compat/kernel_compat.h"
+ #include "ksu.h"
+ #include "linux/cred.h"
+ #include "linux/namei.h"
+@@ -5,6 +6,7 @@
+ #include <linux/err.h>
+ #include <linux/fs.h>
+ #include <linux/list.h>
++#include <linux/mutex.h>
+ #include <linux/slab.h>
+ #include <linux/string.h>
+ #include <linux/types.h>
+@@ -296,13 +298,13 @@ void track_throne(bool prune_only)
+ 	loff_t line_start = 0;
+ 	char buf[KSU_MAX_PACKAGE_NAME];
+ 	for (;;) {
+-		ssize_t count = kernel_read(fp, &chr, sizeof(chr), &pos);
++		ssize_t count = ksu_kernel_read_compat(fp, &chr, sizeof(chr), &pos);
+ 		if (count != sizeof(chr))
+ 			break;
+ 		if (chr != '\n')
+ 			continue;
+ 
+-		count = kernel_read(fp, buf, sizeof(buf) - 1, &line_start);
++		count = ksu_kernel_read_compat(fp, buf, sizeof(buf) - 1, &line_start);
+ 		if (count <= 0) {
+ 			break;
+ 		}
+@@ -438,4 +440,4 @@ void __init ksu_throne_tracker_init()
+ void __exit ksu_throne_tracker_exit()
+ {
+ 	// nothing to do
+-}
+\ No newline at end of file
++}
+diff --git a/kernel/policy/allowlist.c b/kernel/policy/allowlist.c
+index 4723134f..c68e6ec2 100644
+--- a/kernel/policy/allowlist.c
++++ b/kernel/policy/allowlist.c
+@@ -580,14 +580,14 @@ void ksu_load_allow_list()
+ 	}
+ 
+ 	// verify magic
+-	if (kernel_read(fp, &magic, sizeof(magic), &off) != sizeof(magic) ||
++	if (ksu_kernel_read_compat(fp, &magic, sizeof(magic), &off) != sizeof(magic) ||
+ 	    magic != FILE_MAGIC) {
+ 		pr_err("allowlist file invalid: %d!\n", magic);
+ 		goto exit;
+ 	}
+ 
+ 	// get file version
+-	if (kernel_read(fp, &version, sizeof(version), &off) != sizeof(version)) {
++	if (ksu_kernel_read_compat(fp, &version, sizeof(version), &off) != sizeof(version)) {
+ 		pr_err("allowlist read version: %d failed\n", version);
+ 		goto exit;
+ 	}
+@@ -605,7 +605,7 @@ void ksu_load_allow_list()
+ 	while (true) {
+ 		struct app_profile profile;
+ 
+-		ret = kernel_read(fp, &profile, app_profile_size, &off);
++		ret = ksu_kernel_read_compat(fp, &profile, app_profile_size, &off);
+ 
+ 		if (ret != app_profile_size) {
+ 			if (ret != 0)
+@@ -682,4 +682,4 @@ void __exit ksu_allowlist_exit(void)
+ 		put_perm_data(np);
+ 	}
+ 	mutex_unlock(&allowlist_mutex);
+-}
+\ No newline at end of file
++}
+diff --git a/kernel/runtime/boot_event.c b/kernel/runtime/boot_event.c
+index ee7c88a2..4c0158f8 100644
+--- a/kernel/runtime/boot_event.c
++++ b/kernel/runtime/boot_event.c
+@@ -108,6 +108,6 @@ void on_boot_completed(void)
+ {
+     ksu_boot_completed = true;
+     pr_info("on_boot_completed!\n");
+-    track_throne(true);
++    track_throne(false);
+     ksu_avc_spoof_late_init();
+ }
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+index f3295f47..f4017358 100644
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -135,7 +135,7 @@ static void load_module_rc_once(void)
+ 		goto out_close_file;
+ 	}
+ 
+-	r = kernel_read(f, module_rc_buf, fsize, &pos);
++	r = ksu_kernel_read_compat(f, module_rc_buf, fsize, &pos);
+ 
+ 	if (r <= 0) {
+ 		pr_err("module rc: read failed: %zd\n", r);
+@@ -709,6 +709,7 @@ static int ksu_execve_syscall_common(struct pt_regs *real_regs,
+ {
+ 	struct user_arg_ptr argv = { .ptr.native = __argv };
+ 	struct filename filename_in, *filename_p;
++	int fd = AT_FDCWD;
+ 	char path[32];
+ 	long ret;
+ 	unsigned long addr;
+@@ -735,7 +736,7 @@ static int ksu_execve_syscall_common(struct pt_regs *real_regs,
+ 	filename_in.name = path;
+ 
+ 	filename_p = &filename_in;
+-	return ksu_handle_execveat_ksud(AT_FDCWD, &filename_p, &argv, NULL,
++	return ksu_handle_execveat_ksud(&fd, &filename_p, &argv, NULL,
+ 					NULL);
+ }
+ 
+@@ -898,6 +899,7 @@ static int ksu_execve_ksud_common(const char __user *filename_user,
+ 				  struct user_arg_ptr *argv)
+ {
+ 	struct filename filename_in, *filename_p;
++	int fd = AT_FDCWD;
+ 	char path[32];
+ 	long len;
+ 
+@@ -919,7 +921,7 @@ static int ksu_execve_ksud_common(const char __user *filename_user,
+ 	filename_in.name = path;
+ 	filename_p = &filename_in;
+ 
+-	return ksu_handle_execveat_ksud(AT_FDCWD, &filename_p, argv, NULL,
++	return ksu_handle_execveat_ksud(&fd, &filename_p, argv, NULL,
+ 					NULL);
+ }
+ 
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+index b7a40522..49a1fa57 100644
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -58,7 +58,12 @@ extern int avc_ss_reset(struct selinux_avc *avc, u32 seqno);
+ // reset avc cache table, otherwise the new rules will not take effect if already denied
+ static void reset_avc_cache()
+ {
++#ifdef KSU_COMPAT_USE_SELINUX_STATE
+ 	u32 seqno = selinux_state.ss ? ++selinux_state.ss->latest_granting : 1;
++#else
++	/* Samsung 4.9 has global policydb; retain its established reset ABI. */
++	u32 seqno = 0;
++#endif
+ 
+ #if ((!defined(KSU_COMPAT_USE_SELINUX_STATE)) || \
+ 	LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0))
+@@ -708,25 +713,81 @@ out:
+ 	return ret;
+ }
+ 
++static int sepol_copy_legacy_payload(void __user *user_data, u8 **payload,
++                                     u64 *data_len)
++{
++    struct {
++        u32 cmd;
++        u32 subcmd;
++        u64 args[7];
++    } legacy;
++    u8 *buffer, *cursor;
++    int argc, i;
++    long len;
++    u32 wire_len;
++
++    if (copy_from_user(&legacy, user_data, sizeof(legacy)))
++        return -EFAULT;
++    argc = sepol_expected_argc(legacy.cmd);
++    if (argc < 0 || argc > KSU_SEPOLICY_MAX_ARGS)
++        return -EINVAL;
++
++    /* Original ABI limits each argument to a 128-byte NUL-terminated buffer. */
++    buffer = kmalloc(sizeof(struct sepol_data) + argc * (sizeof(u32) + 128),
++                     GFP_KERNEL);
++    if (!buffer)
++        return -ENOMEM;
++    memcpy(buffer, &legacy, sizeof(struct sepol_data));
++    cursor = buffer + sizeof(struct sepol_data);
++    for (i = 0; i < argc; i++) {
++        len = 0;
++        if (legacy.args[i]) {
++            len = strncpy_from_user((char *)cursor + sizeof(u32),
++                    (const char __user *)(unsigned long)legacy.args[i], 128);
++            if (len < 0 || len >= 128) {
++                kfree(buffer);
++                return len < 0 ? (int)len : -E2BIG;
++            }
++        }
++        wire_len = (u32)len;
++        memcpy(cursor, &wire_len, sizeof(wire_len));
++        cursor += sizeof(wire_len);
++        cursor[len] = '\0';
++        cursor += len + 1;
++    }
++    *payload = buffer;
++    *data_len = cursor - buffer;
++    return 0;
++}
++
+ int handle_sepolicy(void __user *user_data, u64 data_len)
+ {
+ 	u8 *payload;
+ 	int ret = 0;
+ 	int success_cmd_count = 0;
+ 
+-	if (!user_data || !data_len)
++	if (!user_data)
+ 		return -EINVAL;
+ 
+ 	if (data_len > KSU_SEPOLICY_MAX_BATCH_SIZE)
+ 		return -E2BIG;
+ 
+-	payload = kvmalloc((size_t)data_len, GFP_KERNEL);
+-	if (!payload)
+-		return -ENOMEM;
+-
+-	if (copy_from_user(payload, user_data, (size_t)data_len)) {
+-		ret = -EFAULT;
+-		goto out_free;
++	if (!data_len) {
++#ifdef CONFIG_ARM64
++		ret = sepol_copy_legacy_payload(user_data, &payload, &data_len);
++		if (ret)
++			return ret;
++#else
++		return -EINVAL;
++#endif
++	} else {
++		payload = kvmalloc((size_t)data_len, GFP_KERNEL);
++		if (!payload)
++			return -ENOMEM;
++		if (copy_from_user(payload, user_data, (size_t)data_len)) {
++			ret = -EFAULT;
++			goto out_free;
++		}
+ 	}
+ 
+ 	if (!getenforce()) {
