@@ -36,7 +36,7 @@ def require(condition, detail):
 
 def package_variant(variant, staging):
     suffix = '-OneUI7' if variant == 'OneUI7' else ''
-    name = f'DS-ACK-V1.12-F22R-{date}-Enforcing-KernelSU{suffix}'
+    name = f'DS-ACK-V1.13-F22R-{date}-Enforcing-KernelSU{suffix}'
     original_name = f'DS-ACK-V1.12-08.05.2026-Enforcing-KernelSU{suffix}.zip'
     source_zip = Path(os.environ.get('F22R_REFERENCE_ZIPS') or '/mnt/e/Android/reference-v112') / original_name
     image_folder = captures / variant

@@ -1,6 +1,7 @@
-# DS-ACK V1.12 F22R — KernelSU-Next 3.4.2 legacy
+# DS-ACK F22R V1.13 Beta 1 — KernelSU-Next 3.4.2 legacy
 
 Unofficial update of DS-ACK by [duhansysl](https://github.com/duhansysl/exynos9810-kernel).
+F22R V1.13 is based on DS-ACK V1.12. The kernel release string retains the upstream base and the F22R build date.
 Original credits, license and recovery installer lineage are retained.
 
 ## Two variants
