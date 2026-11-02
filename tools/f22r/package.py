@@ -11,9 +11,9 @@ import subprocess
 import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
 
-root = Path(os.environ.get('F22R_KERNEL_ROOT', Path(__file__).resolve().parents[2]))
-captures = Path(os.environ.get('F22R_CAPTURE_ROOT', root / '.f22r/captures'))
-out = Path(os.environ.get('F22R_OUTPUT', root / '.f22r/releases'))
+root = Path(os.environ.get('F22R_KERNEL_ROOT') or Path(__file__).resolve().parents[2])
+captures = Path(os.environ.get('F22R_CAPTURE_ROOT') or root / '.f22r/captures')
+out = Path(os.environ.get('F22R_OUTPUT') or root / '.f22r/releases')
 out.mkdir(parents=True, exist_ok=True)
 models = ('G960F', 'G965F', 'N960F', 'G960N', 'G965N', 'N960N')
 # Read the build date from the kernel itself, including when packaging a prior build.
@@ -29,12 +29,16 @@ del base_image
 
 def sha(data): return hashlib.sha256(data).hexdigest()
 
-reports = {}
-for variant in ('regular', 'OneUI7'):
+def require(condition, detail):
+    if not condition:
+        raise ValueError(detail)
+
+
+def package_variant(variant, staging):
     suffix = '-OneUI7' if variant == 'OneUI7' else ''
     name = f'DS-ACK-V1.12-F22R-{date}-Enforcing-KernelSU{suffix}'
     original_name = f'DS-ACK-V1.12-08.05.2026-Enforcing-KernelSU{suffix}.zip'
-    source_zip = Path(os.environ.get('F22R_REFERENCE_ZIPS', '/mnt/e/Android/reference-v112')) / original_name
+    source_zip = Path(os.environ.get('F22R_REFERENCE_ZIPS') or '/mnt/e/Android/reference-v112') / original_name
     image_folder = captures / variant
     with tempfile.TemporaryDirectory(prefix='f22r-package-') as tmp:
         stage = Path(tmp)
@@ -72,19 +76,19 @@ for variant in ('regular', 'OneUI7'):
             config = (image_folder / (model + '.config')).read_text()
             symbols = (image_folder / (model + '.System.map')).read_text()
             version = f'4.9.337-DS-ACK-V1.12-{model}-{date}-F22R-v3.4.2{suffix}'
-            assert version.encode() in image, (variant, model, 'uname')
-            assert len(version) <= 64
-            assert image[56:60] == b'ARM\x64', (variant, model, 'arm64 header')
+            require(version.encode() + b'\0' in image, (variant, model, 'uname'))
+            require(len(version) <= 64, 'uname too long')
+            require(image[56:60] == b'ARM\x64', (variant, model, 'arm64 header'))
             for flag in ('CONFIG_KSU=y', 'CONFIG_KSU_MANUAL_HOOK=y', 'CONFIG_SECURITY_SELINUX=y'):
-                assert flag in config.splitlines(), (variant, model, flag)
-            assert 'CONFIG_ALWAYS_PERMISSIVE=y' not in config
+                require(flag in config.splitlines(), (variant, model, flag))
+            require('CONFIG_ALWAYS_PERMISSIVE=y' not in config, 'permissive kernel')
             enabled = 'CONFIG_ONEUI7_WORKAROUND=y' in config.splitlines()
-            assert enabled == (variant == 'OneUI7')
-            assert (' get_fixed_brightness\n' in symbols) == enabled
-            assert b'v3.4.2' in image
+            require(enabled == (variant == 'OneUI7'), 'OneUI7 configuration')
+            require((' get_fixed_brightness\n' in symbols) == enabled, 'brightness symbol')
+            require(b'v3.4.2' in image, 'driver version string')
             command_file = image_folder / (model + '.ksu-command.txt')
             command = command_file.read_text()
-            assert '-DKSU_VERSION=33355' in command
+            require(re.search(r'-DKSU_VERSION=33355(?![0-9])', command), 'driver version code')
             for ext, data in (('kernel', image), ('dtb', dtb)):
                 dest = stage / f'floyd/{model}-{ext}'
                 if model == 'G960F':
@@ -95,7 +99,7 @@ for variant in ('regular', 'OneUI7'):
                     subprocess.run(['bsdiff', str(base), str(source), str(dest)], check=True)
             records[model] = {'uname': version, 'Image_sha256': sha(image), 'DTB_sha256': sha(dtb),
                               'OneUI7': enabled, 'driver_version': 33355}
-        archive = out / (name + '.zip')
+        archive = staging / (name + '.zip')
         with ZipFile(archive, 'w', ZIP_DEFLATED) as package:
             for path in sorted(stage.rglob('*')):
                 if path.is_file():
@@ -104,10 +108,10 @@ for variant in ('regular', 'OneUI7'):
                     entry.external_attr = 0o100755 << 16
                     package.writestr(entry, path.read_bytes(), compress_type=ZIP_DEFLATED)
         with ZipFile(archive) as package, ZipFile(source_zip) as original:
-            assert package.testzip() is None
+            require(package.testzip() is None, 'ZIP CRC')
             for tool in ('busybox', 'magiskboot', 'bsdiff'):
                 rel = 'floyd/tools/' + tool
-                assert package.read(rel) == original.read(rel), ('original tool changed', tool)
+                require(package.read(rel) == original.read(rel), ('original tool changed', tool))
             for model in models:
                 for ext in ('kernel', 'dtb'):
                     data = package.read(f'floyd/{model}-{ext}')
@@ -119,7 +123,7 @@ for variant in ('regular', 'OneUI7'):
                                         str(rebuilt), str(patch)], check=True)
                         data = rebuilt.read_bytes()
                     expected = records[model]['Image_sha256' if ext == 'kernel' else 'DTB_sha256']
-                    assert sha(data) == expected, (variant, model, ext, 'delta reconstruction')
+                    require(sha(data) == expected, (variant, model, ext, 'delta reconstruction'))
                     # Neither variant changes device trees from its exact upstream ZIP.
                     original_data = original.read(f'floyd/{model}-{ext}')
                     if ext == 'dtb':
@@ -129,13 +133,20 @@ for variant in ('regular', 'OneUI7'):
                             subprocess.run(['bspatch', str(stage / 'original-base'), str(stage / 'original-dtb'),
                                             str(stage / 'original-patch')], check=True)
                             original_data = (stage / 'original-dtb').read_bytes()
-                        assert original_data == data, (variant, model, 'DTB differs from upstream')
-            assert 'Unofficial F22R' in package.read(paths[2]).decode()
-        reports[variant] = {'file': archive.name, 'sha256': sha(archive.read_bytes()),
+                        require(original_data == data, (variant, model, 'DTB differs from upstream'))
+            require('Unofficial F22R' in package.read(paths[2]).decode(), 'installer attribution')
+        record = {'file': archive.name, 'sha256': sha(archive.read_bytes()),
                             'bytes': archive.stat().st_size, 'models': records}
-        print('VERIFIED', variant, archive.name, reports[variant]['sha256'], flush=True)
+        print('VERIFIED', variant, archive.name, record['sha256'], flush=True)
+        return record
 
-for model in models:
-    assert reports['regular']['models'][model]['Image_sha256'] != reports['OneUI7']['models'][model]['Image_sha256']
-(out / 'verification.json').write_text(json.dumps(reports, indent=2))
+with tempfile.TemporaryDirectory(prefix='.verify-', dir=out) as tmp:
+    staging = Path(tmp)
+    reports = {variant: package_variant(variant, staging) for variant in ('regular', 'OneUI7')}
+    for model in models:
+        require(reports['regular']['models'][model]['Image_sha256'] !=
+                reports['OneUI7']['models'][model]['Image_sha256'], (model, 'identical variant images'))
+    (staging / 'verification.json').write_text(json.dumps(reports, indent=2))
+    for name in [reports['regular']['file'], reports['OneUI7']['file'], 'verification.json']:
+        (staging / name).replace(out / name)
 print('PASS: 12 kernels, 12 DTBs, Enforcing, legacy KSU, OneUI7 separation and original tools verified.')

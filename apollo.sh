@@ -157,7 +157,7 @@ if [ $CR_COMPILER != "8" ]; then
 				if [ $? -ne 0 ]; then
 					echo "Download failed or was incomplete"
 					echo "Setup Compiler and try again"
-					exit 0;
+					exit 1;
 				fi
 				# Neutron Needs patches
 				if [ $CR_COMPILER = "5" ] || [ $CR_COMPILER = "6" ]; then
@@ -168,18 +168,18 @@ if [ $CR_COMPILER != "8" ]; then
 				echo "Compiler Downloaded."
 			else
 				echo "Invalid URL: $URL"
-				exit 0;
+				exit 1;
 			fi
 		else
 			echo " Aborting "
 			echo " Setup Compiler and try again"
-			exit 0;
+			exit 1;
 		fi
 	fi
 else
     if [ ! -d "$CR_CLANG/bin" ] || [ ! -d "$CR_CLANG/lib" ]; then
         echo "clang-custom compiler is missing in $CR_TC/clang-custom"
-        exit 0;
+        exit 1;
     fi
 fi
 
@@ -388,13 +388,13 @@ BUILD_ZIMAGE()
 	echo "Building zImage for $CR_VARIANT"
 	export LOCALVERSION=-$CR_LOCALVERSION
 	echo "Make $CR_CONFIG"
-	$compile $CR_CONFIG || return 1
+	$compile $CR_CONFIG || exit 1
 	echo "Make Kernel with $CR_COMPILER_ARG"
-	$compile -j$CR_JOBS || return 1
-	if [ ! -e $CR_KERNEL ]; then
-	exit 0;
+	$compile -j$CR_JOBS || exit 1
+	if [ ! -s "$CR_KERNEL" ]; then
 	echo "Image Failed to Compile"
 	echo " Abort "
+	exit 1
 	fi
 	du -k "$CR_KERNEL" | cut -f1 >sizT
 	sizT=$(head -n 1 sizT)
@@ -410,10 +410,10 @@ BUILD_DTB()
 	echo " "
 	echo "Checking DTB for $CR_VARIANT"
 	# This source does compiles dtbs while doing Image
-	if [ ! -e $CR_DTB ]; then
-        exit 0;
+	if [ ! -s "$CR_DTB" ]; then
         echo "DTB Failed to Compile"
         echo " Abort "
+        exit 1
 	else
         echo "DTB Compiled at $CR_DTB"
 	fi
@@ -434,16 +434,17 @@ PACK_BOOT_IMG()
 	echo " "
 	echo "Building Boot.img for $CR_VARIANT"
 	# Copy Ramdisk
-	cp -rf $CR_RAMDISK/* $CR_AIK
+	cp -rf "$CR_RAMDISK"/* "$CR_AIK" || exit 1
 	# Move Compiled kernel and dtb to A.I.K Folder
-	mv $CR_KERNEL $CR_AIK/split_img/boot.img-zImage
-	mv $CR_DTB $CR_AIK/split_img/boot.img-dtb
+	mv "$CR_KERNEL" "$CR_AIK/split_img/boot.img-zImage" || exit 1
+	mv "$CR_DTB" "$CR_AIK/split_img/boot.img-dtb" || exit 1
 	# Create boot.img
-	$CR_AIK/repackimg.sh
-	if [ ! -e $CR_AIK/image-new.img ]; then
-        exit 0;
+	rm -f "$CR_AIK/image-new.img"
+	"$CR_AIK/repackimg.sh" || exit 1
+	if [ ! -s "$CR_AIK/image-new.img" ]; then
         echo "Boot Image Failed to pack"
         echo " Abort "
+        exit 1
 	fi
 	# Remove red warning at boot
 	echo -n "SEANDROIDENFORCE" >> $CR_AIK/image-new.img
@@ -469,6 +470,7 @@ PACK_BOOT_IMG()
 # Single Target Build Function
 BUILD()
 {
+	case "$CR_TARGET" in [1-6]) ;; *) echo "Unsupported build target: $CR_TARGET" >&2; exit 1 ;; esac
 	if [ "$CR_TARGET" = "1" ]; then
 		echo " Galaxy S9 INTL"
 		CR_CONFIG_SPLIT=$CR_CONFIG_G960
@@ -654,11 +656,11 @@ if ! dpkg-query -W -f='${Status}' bsdiff  | grep "ok installed"; then
 		sudo apt install -y bsdiff
 		if ! dpkg-query -W -f='${Status}' bsdiff | grep "ok installed"; then
 			echo "Failed to install bsdiff. Please try installing it manually."
-			exit 0;
+			exit 1;
 		fi
 	else
 		echo "Please install bsdiff with sudo apt install bsdiff and try again."
-		exit 0;
+		exit 1;
 	fi
 fi
 
@@ -676,9 +678,9 @@ if [ "$CR_TARGET" = "1" ]; then # Always must run ONCE during BUILD_ALL otherwis
 	echo " Copying $CR_BASE_DTB "
 	echo " "
 	if [ ! -e $CR_KERNEL ] || [ ! -e $CR_DTB ]; then
-        exit 0;
         echo " Kernel not found!"
         echo " Abort "
+        exit 1
 	else
         cp $CR_KERNEL $CR_BASE_KERNEL
         cp $CR_DTB $CR_BASE_DTB
@@ -694,17 +696,17 @@ if [ ! "$CR_TARGET" = "1" ]; then # Generate patch files for non starlte kernels
 	if [ ! -e $CR_KERNEL ] || [ ! -e $CR_DTB ]; then
         echo " Kernel not found! "
         echo " Abort "
-        exit 0;
+        exit 1;
 	else
-		bsdiff $CR_BASE_KERNEL $CR_KERNEL $CR_OUTZIP/floyd/$CR_VARIANT-kernel
+		bsdiff "$CR_BASE_KERNEL" "$CR_KERNEL" "$CR_OUTZIP/floyd/$CR_VARIANT-kernel" || exit 1
 		if [ ! -e $CR_OUTZIP/floyd/$CR_VARIANT-kernel ]; then
 			echo "ERROR: bsdiff $CR_BASE_KERNEL $CR_KERNEL $CR_OUTZIP/floyd/$CR_VARIANT-kernel Failed!"
-			exit 0;
+			exit 1;
 		fi
-		bsdiff $CR_BASE_DTB $CR_DTB $CR_OUTZIP/floyd/$CR_VARIANT-dtb
-		if [ ! -e $CR_OUTZIP/floyd/$CR_VARIANT-kernel ]; then
-			echo "ERROR: bsdiff $CR_BASE_KERNEL $CR_DTB $CR_OUTZIP/floyd/$CR_VARIANT-dtb Failed!"
-			exit 0;
+		bsdiff "$CR_BASE_DTB" "$CR_DTB" "$CR_OUTZIP/floyd/$CR_VARIANT-dtb" || exit 1
+		if [ ! -s "$CR_OUTZIP/floyd/$CR_VARIANT-dtb" ]; then
+			echo "ERROR: bsdiff $CR_BASE_DTB $CR_DTB $CR_OUTZIP/floyd/$CR_VARIANT-dtb Failed!"
+			exit 1;
 		fi
 	fi
 fi
