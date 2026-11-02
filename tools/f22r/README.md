@@ -24,5 +24,5 @@ complete packaging requires all six models for both variants.
 
 Apollo applies patches/kernelsu-next-v3.4.2-exynos9810.patch idempotently to the
 pinned upstream legacy submodule. Its dirty state after applying this tracked
-patch is expected; the submodule commit itself remains upstream d51ca52c.
+patch is expected; the submodule commit itself remains upstream b933b1f7.
 No GitHub Actions or phone connection is required to compile or package.

@@ -18,7 +18,7 @@ developer's release notes; they are not a claim of new physical-device testing.
 ## KernelSU source
 
 This is a **built-in non-GKI legacy integration**. It uses official legacy commit
-`d51ca52c6d370d8e9d62aabde10e41f17ff3ae94`, including the upstream 3.4.2 feature
+`b933b1f728116a456fbebf27b6a8772a640cdf23`, including the upstream 3.4.2 feature
 backports in `c81cdf51` and the subsequent SELinux rwlock allocation fix.
 It does not substitute the GKI/LKM driver from tag v3.4.2 into a 4.9 kernel.
 
@@ -32,7 +32,7 @@ daemon-domain fixes from the prior F22R build are retained.
 `KSU_VERSION_TAG_OVERRIDE=v3.4.2` and the upstream-supported
 `KSU_VERSION_OVERRIDE=33355` explicitly pin the integration's reported version
 to the official v3.4.2 Manager release code. Unmodified legacy commit-count
-calculation is 33314; both values and the exact source commit are documented
+calculation is 33318; both values and the exact source commit are documented
 here to avoid implying that the commit histories match.
 
 Use the official **Main v3.4.2 Manager**, not an unrelated APK with an incompatible
