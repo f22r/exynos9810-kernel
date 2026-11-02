@@ -238,25 +238,25 @@ static void default_frame_work_fn(struct kthread_work *work)
 
 int frame_manager_open(struct fimc_is_framemgr *this, u32 buffers)
 {
+	struct fimc_is_frame *frames, *old_frames;
 	u32 i;
 	unsigned long flag;
 
 	/*
-	 * We already have frames allocated, so we should free them first.
+	 * Keep the current queue intact until the replacement is allocated.
 	 * reqbufs(n) could be called multiple times from userspace after
 	 * each video node was opened.
 	 */
-	if (this->frames)
-		vfree(this->frames);
-
-	this->frames = vzalloc(sizeof(struct fimc_is_frame) * buffers);
-	if (!this->frames) {
+	frames = vzalloc(sizeof(*frames) * (size_t)buffers);
+	if (!frames) {
 		err("failed to allocate frames");
 		return -ENOMEM;
 	}
 
 	spin_lock_irqsave(&this->slock, flag);
 
+	old_frames = this->frames;
+	this->frames = frames;
 	this->num_frames = buffers;
 
 	for (i = 0; i < NR_FRAME_STATE; i++) {
@@ -271,21 +271,22 @@ int frame_manager_open(struct fimc_is_framemgr *this, u32 buffers)
 	}
 
 	spin_unlock_irqrestore(&this->slock, flag);
+	if (old_frames)
+		vfree(old_frames);
 
 	return 0;
 }
 
 int frame_manager_close(struct fimc_is_framemgr *this)
 {
+	struct fimc_is_frame *old_frames;
 	u32 i;
 	unsigned long flag;
 
 	spin_lock_irqsave(&this->slock, flag);
 
-	if (this->frames) {
-		vfree(this->frames);
-		this->frames = NULL;
-	}
+	old_frames = this->frames;
+	this->frames = NULL;
 
 	this->num_frames = 0;
 
@@ -295,6 +296,8 @@ int frame_manager_close(struct fimc_is_framemgr *this)
 	}
 
 	spin_unlock_irqrestore(&this->slock, flag);
+	if (old_frames)
+		vfree(old_frames);
 
 	return 0;
 }
