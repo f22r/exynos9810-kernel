@@ -117,6 +117,10 @@ static struct page *erofs_read_inode(struct inode *inode,
 		inode->i_ctime.tv_sec = le64_to_cpu(die->i_ctime);
 		inode->i_ctime.tv_nsec = le32_to_cpu(die->i_ctime_nsec);
 
+		if (le64_to_cpu(die->i_size) > sb->s_maxbytes) {
+			err = -EFSCORRUPTED;
+			goto err_out;
+		}
 		inode->i_size = le64_to_cpu(die->i_size);
 
 		/* total blocks for compressed files */
@@ -176,9 +180,9 @@ static struct page *erofs_read_inode(struct inode *inode,
 
 	if (!nblks)
 		/* measure inode.i_blocks as generic filesystems */
-		inode->i_blocks = roundup(inode->i_size, EROFS_BLKSIZ) >> 9;
+		inode->i_blocks = DIV_ROUND_UP_ULL((u64)inode->i_size, EROFS_BLKSIZ) << LOG_SECTORS_PER_BLOCK;
 	else
-		inode->i_blocks = nblks << LOG_SECTORS_PER_BLOCK;
+		inode->i_blocks = (u64)nblks << LOG_SECTORS_PER_BLOCK;
 	return page;
 
 bogusimode:
@@ -360,6 +364,7 @@ const struct inode_operations erofs_generic_iops = {
 };
 
 const struct inode_operations erofs_symlink_iops = {
+	.readlink = generic_readlink,
 	.get_link = page_get_link,
 	.getattr = erofs_getattr,
 	.listxattr = erofs_listxattr,
@@ -367,6 +372,7 @@ const struct inode_operations erofs_symlink_iops = {
 };
 
 const struct inode_operations erofs_fast_symlink_iops = {
+	.readlink = generic_readlink,
 	.get_link = simple_get_link,
 	.getattr = erofs_getattr,
 	.listxattr = erofs_listxattr,
