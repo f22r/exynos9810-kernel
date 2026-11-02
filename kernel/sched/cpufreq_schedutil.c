@@ -144,25 +144,27 @@ static bool sugov_up_down_rate_limit(struct sugov_policy *sg_policy, u64 time,
 
 static int sugov_select_scaling_cpu(void)
 {
-	int cpu;
+	int cpu, fallback = -1;
 	cpumask_t mask;
 
 	cpumask_clear(&mask);
 	cpumask_and(&mask, cpu_coregroup_mask(0), cpu_online_mask);
 
 	/* Idle core of the boot cluster is selected to scaling cpu */
-	for_each_cpu(cpu, &mask)
+	for_each_cpu(cpu, &mask) {
+		fallback = cpu;
 		if (idle_cpu(cpu))
-			return cpu;
-
-	/* if panic_cpu is not Little core, mask will be empty */
-	if (unlikely(!cpumask_weight(&mask))) {
-		cpu = atomic_read(&panic_cpu);
-		if (cpu != PANIC_CPU_INVALID)
 			return cpu;
 	}
 
-	return cpumask_weight(&mask) - 1;
+	/* if panic_cpu is not Little core, mask will be empty */
+	if (unlikely(fallback < 0)) {
+		cpu = atomic_read(&panic_cpu);
+		if (cpu != PANIC_CPU_INVALID && cpu_online(cpu))
+			return cpu;
+	}
+
+	return fallback;
 }
 
 static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,

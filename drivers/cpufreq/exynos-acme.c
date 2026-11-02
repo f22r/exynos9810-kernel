@@ -801,7 +801,6 @@ static __init int init_table(struct exynos_cpufreq_domain *domain)
 	unsigned long *table;
 	unsigned int *volt_table;
 	struct exynos_cpufreq_dm *dm;
-	struct exynos_ufc *ufc;
 	struct device *dev;
 	int ret = 0;
 
@@ -845,12 +844,6 @@ static __init int init_table(struct exynos_cpufreq_domain *domain)
 		/* Initialize table of DVFS manager constraint */
 		list_for_each_entry(dm, &domain->dm_list, list)
 		dm->c.freq_table[index].master_freq = table[index];
-
-		/* Initialize table of UFC */
-		list_for_each_entry(ufc, &domain->ufc_list, list)
-		ufc->info.freq_table[index].master_freq =
-		domain->freq_table[index].frequency;
-
 	}
 	domain->freq_table[index].driver_data = index;
 	domain->freq_table[index].frequency = CPUFREQ_TABLE_END;
@@ -940,7 +933,7 @@ static int init_constraint_table_ect(struct exynos_cpufreq_domain *domain,
 		return -ENODEV;
 
 	ect_domain = ect_minlock_get_domain(block, (char *)ect_name);
-	if (!ect_domain)
+	if (!ect_domain || !ect_domain->num_of_level)
 		return -ENODEV;
 
 	for (index = 0; index < domain->table_size; index++) {
@@ -974,22 +967,25 @@ static int init_constraint_table_dt(struct exynos_cpufreq_domain *domain,
 									struct device_node *dn)
 {
 	struct exynos_dm_freq *table;
-	int size, index, c_index;
+	int size, index, c_index, ret;
 
-	/*
-	 * A DVFS Manager table row consists of CPU and MIF frequency
-	 * value, the size of a row is 64bytes. Divide size in half when
-	 * table is allocated.
-	 */
+	/* Each row contains a master frequency and its constraint. */
 	size = of_property_count_u32_elems(dn, "table");
 	if (size < 0)
 		return size;
 
-	table = kzalloc(sizeof(struct exynos_dm_freq) * size / 2, GFP_KERNEL);
+	if (!size || size % 2)
+		return -EINVAL;
+
+	table = kcalloc(size / 2, sizeof(*table), GFP_KERNEL);
 	if (!table)
 		return -ENOMEM;
 
-	of_property_read_u32_array(dn, "table", (unsigned int *)table, size);
+	ret = of_property_read_u32_array(dn, "table", (unsigned int *)table, size);
+	if (ret) {
+		kfree(table);
+		return ret;
+	}
 	for (index = 0; index < domain->table_size; index++) {
 		unsigned int freq = domain->freq_table[index].frequency;
 
@@ -1244,8 +1240,6 @@ static __init int init_domain(struct exynos_cpufreq_domain *domain,
 
 	domain->boot_freq = cal_dfs_get_boot_freq(domain->cal_id);
 	domain->resume_freq = cal_dfs_get_resume_freq(domain->cal_id);
-
-	ufc_domain_init(domain);
 
 	ret = init_table(domain);
 	if (ret)

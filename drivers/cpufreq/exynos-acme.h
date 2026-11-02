@@ -89,14 +89,6 @@ extern struct list_head *get_domain_list(void);
 extern struct exynos_cpufreq_domain *first_domain(void);
 extern struct exynos_cpufreq_domain *last_domain(void);
 extern int exynos_cpufreq_domain_count(void);
-#ifdef CONFIG_ARM_EXYNOS_UFC
-extern int ufc_domain_init(struct exynos_cpufreq_domain *domain);
-#else
-static inline int ufc_domain_init(struct exynos_cpufreq_domain *domain)
-{
-	return 0;
-}
-#endif
 
 /*
  * the time it takes on this CPU to switch between
