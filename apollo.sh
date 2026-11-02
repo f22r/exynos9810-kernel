@@ -317,8 +317,8 @@ BUILD_GENERATE_CONFIG()
   fi
   if [[ "$CR_KSU" =~ ^[yY]$ ]]; then
     echo " Building KernelSU"
-    if [ "$(git -C "$CR_DIR/KernelSU-Next" rev-parse HEAD)" != "d51ca52c6d370d8e9d62aabde10e41f17ff3ae94" ]; then
-      echo "Expected pinned KernelSU-Next legacy d51ca52c (3.4.2 backports)"
+    if [ "$(git -C "$CR_DIR/KernelSU-Next" rev-parse HEAD)" != "b933b1f728116a456fbebf27b6a8772a640cdf23" ]; then
+      echo "Expected pinned KernelSU-Next legacy b933b1f7 (3.4.2 backports)"
       exit 1
     fi
     CR_KSU_PATCH="$CR_DIR/patches/kernelsu-next-v3.4.2-exynos9810.patch"

@@ -14,7 +14,7 @@ index 6deb054f..634421f5 100644
  			buffer = vzalloc(size);
  		else
 diff --git a/kernel/compat/kernel_compat.h b/kernel/compat/kernel_compat.h
-index 090aab85..7eaedd21 100644
+index f3506c27..ec3cd86c 100644
 --- a/kernel/compat/kernel_compat.h
 +++ b/kernel/compat/kernel_compat.h
 @@ -68,8 +68,9 @@ extern void *ksu_compat_kvrealloc(const void *p, size_t oldsize, size_t newsize,
@@ -30,7 +30,7 @@ index 090aab85..7eaedd21 100644
  	return buf;
  }
 diff --git a/kernel/core/init.c b/kernel/core/init.c
-index 9be09872..fac726a4 100644
+index e6562de1..11ef6be9 100644
 --- a/kernel/core/init.c
 +++ b/kernel/core/init.c
 @@ -5,6 +5,7 @@
@@ -39,9 +39,9 @@ index 9be09872..fac726a4 100644
  #include <linux/workqueue.h>
 +#include <linux/jiffies.h>
  
+ #include "preinit/preinit.h"
  #include "policy/allowlist.h"
- #include "policy/app_profile.h"
-@@ -12,6 +13,7 @@
+@@ -13,6 +14,7 @@
  #include "klog.h" // IWYU pragma: keep
  #include "manager/manager_observer.h"
  #include "manager/throne_tracker.h"
@@ -49,7 +49,7 @@ index 9be09872..fac726a4 100644
  #include "hook/hook_manager.h"
  #include "runtime/ksud.h"
  #include "runtime/ksud_boot.h"
-@@ -95,6 +97,21 @@ module_param(allow_shell, bool, 0);
+@@ -96,6 +98,21 @@ module_param(allow_shell, bool, 0);
  bool ksu_no_custom_rc = false;
  module_param_named(norc, ksu_no_custom_rc, bool, 0);
  
@@ -71,7 +71,7 @@ index 9be09872..fac726a4 100644
  #ifdef MODULE
  bool ksu_bundled = false;
  module_param_named(bundled, ksu_bundled, bool, 0);
-@@ -192,6 +209,11 @@ int __init kernelsu_init(void)
+@@ -195,6 +212,11 @@ int __init kernelsu_init(void)
  		ksu_file_wrapper_init();
  	}
  
@@ -83,7 +83,7 @@ index 9be09872..fac726a4 100644
  #ifdef MODULE
  #ifndef CONFIG_KSU_DEBUG
  	kobject_del(&THIS_MODULE->mkobj.kobj);
-@@ -202,6 +224,9 @@ int __init kernelsu_init(void)
+@@ -205,6 +227,9 @@ int __init kernelsu_init(void)
  
  void __exit kernelsu_exit(void)
  {
@@ -94,10 +94,10 @@ index 9be09872..fac726a4 100644
  	ksu_syscall_hook_manager_exit();
  
 diff --git a/kernel/manager/apk_sign.c b/kernel/manager/apk_sign.c
-index 262a9248..29551863 100644
+index 50b59e27..44f5e36f 100644
 --- a/kernel/manager/apk_sign.c
 +++ b/kernel/manager/apk_sign.c
-@@ -21,6 +21,7 @@
+@@ -22,6 +22,7 @@
  
  #include "manager/apk_sign.h"
  #include "uapi/app_profile.h"
@@ -105,7 +105,7 @@ index 262a9248..29551863 100644
  #include "klog.h" // IWYU pragma: keep
  
  struct sdesc {
-@@ -80,7 +81,7 @@ static bool read_exact(struct file *fp, void *buffer, size_t size, loff_t *pos,
+@@ -81,7 +82,7 @@ static bool read_exact(struct file *fp, void *buffer, size_t size, loff_t *pos,
  	if (*pos < 0 || *pos > end || size > (size_t)(end - *pos))
  		return false;
  
@@ -114,7 +114,7 @@ index 262a9248..29551863 100644
  }
  
  static bool read_length_prefixed_end(struct file *fp, loff_t *pos, loff_t container_end, loff_t *value_end)
-@@ -171,7 +172,7 @@ static __always_inline bool check_v2_signature(char *path,
+@@ -172,7 +173,7 @@ static __always_inline bool check_v2_signature(char *path,
  	// https://en.wikipedia.org/wiki/Zip_(file_format)#End_of_central_directory_record_(EOCD)
  	// Buffered backward search (single read) instead of the upstream
  	// byte-by-byte loop: scanning /data/app at boot with thousands of
@@ -123,7 +123,7 @@ index 262a9248..29551863 100644
  	{
  		unsigned char *eocd_buffer;
  		long search_size;
-@@ -191,7 +192,7 @@ static __always_inline bool check_v2_signature(char *path,
+@@ -192,7 +193,7 @@ static __always_inline bool check_v2_signature(char *path,
  		memset(eocd_buffer, 0, search_size);
  
  		pos = file_size - search_size;
@@ -269,15 +269,21 @@ index f3295f47..f4017358 100644
  }
  
 diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
-index b7a40522..49a1fa57 100644
+index abcdd75f..49a1fa57 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
-@@ -58,7 +58,12 @@ extern int avc_ss_reset(struct selinux_avc *avc, u32 seqno);
+@@ -58,13 +58,12 @@ extern int avc_ss_reset(struct selinux_avc *avc, u32 seqno);
  // reset avc cache table, otherwise the new rules will not take effect if already denied
  static void reset_avc_cache()
  {
+-	#if defined(KSU_COMPAT_USE_SELINUX_STATE)
 +#ifdef KSU_COMPAT_USE_SELINUX_STATE
  	u32 seqno = selinux_state.ss ? ++selinux_state.ss->latest_granting : 1;
+-	#else
+-	/* 4.9: no selinux_state; use a monotonic local seqno for AVC/policyload notifications */
+-	static u32 ksu_avc_seqno = 1;
+-	u32 seqno = ++ksu_avc_seqno;
+-	#endif
 +#else
 +	/* Samsung 4.9 has global policydb; retain its established reset ABI. */
 +	u32 seqno = 0;
@@ -285,7 +291,7 @@ index b7a40522..49a1fa57 100644
  
  #if ((!defined(KSU_COMPAT_USE_SELINUX_STATE)) || \
  	LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0))
-@@ -708,25 +713,81 @@ out:
+@@ -714,25 +713,81 @@ out:
  	return ret;
  }
  

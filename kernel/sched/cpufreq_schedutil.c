@@ -34,6 +34,7 @@ struct sugov_tunables {
 	struct gov_attr_set attr_set;
 	unsigned int up_rate_limit_us;
 	unsigned int down_rate_limit_us;
+	bool iowait_boost_enabled;
 };
 
 struct sugov_policy {
@@ -282,6 +283,10 @@ static void sugov_get_util(unsigned long *util, unsigned long *max, u64 time)
 static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 				   unsigned int flags)
 {
+	if (!READ_ONCE(sg_cpu->sg_policy->tunables->iowait_boost_enabled)) {
+		sg_cpu->iowait_boost = 0;
+		return;
+	}
 	if (flags & SCHED_CPUFREQ_IOWAIT) {
 		sg_cpu->iowait_boost = sg_cpu->iowait_boost_max;
 	} else if (sg_cpu->iowait_boost) {
@@ -292,8 +297,6 @@ static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 			sg_cpu->iowait_boost = 0;
 	}
 
-	/* HACK: block iowait boost to avoid unnecessary setting max frequency */
-	sg_cpu->iowait_boost = 0;
 }
 
 static void sugov_iowait_boost(struct sugov_cpu *sg_cpu, unsigned long *util,
@@ -576,10 +579,28 @@ static ssize_t down_rate_limit_us_store(struct gov_attr_set *attr_set,
 	return count;
 }
 
+static ssize_t iowait_boost_enabled_show(struct gov_attr_set *attr_set, char *buf)
+{
+	return sprintf(buf, "%u\n", READ_ONCE(to_sugov_tunables(attr_set)->iowait_boost_enabled));
+}
+
+static ssize_t iowait_boost_enabled_store(struct gov_attr_set *attr_set,
+					 const char *buf, size_t count)
+{
+	bool enabled;
+
+	if (kstrtobool(buf, &enabled))
+		return -EINVAL;
+	WRITE_ONCE(to_sugov_tunables(attr_set)->iowait_boost_enabled, enabled);
+	return count;
+}
+
+static struct governor_attr iowait_boost_enabled = __ATTR_RW(iowait_boost_enabled);
 static struct governor_attr up_rate_limit_us = __ATTR_RW(up_rate_limit_us);
 static struct governor_attr down_rate_limit_us = __ATTR_RW(down_rate_limit_us);
 
 static struct attribute *sugov_attributes[] = {
+	&iowait_boost_enabled.attr,
 	&up_rate_limit_us.attr,
 	&down_rate_limit_us.attr,
 	NULL
