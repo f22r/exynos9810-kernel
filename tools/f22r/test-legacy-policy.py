@@ -42,8 +42,15 @@ static int fail_alloc, vm_calls, last_flags;
 static void *kmalloc(size_t n, gfp_t f) {last_flags=f; return fail_alloc ? NULL : malloc(n);}
 static void *vmalloc(size_t n) {vm_calls++; return malloc(n);}
 static void *vzalloc(size_t n) {vm_calls++; return calloc(1,n);}
-#define kfree free
+#define kfree(p) free((void *)(p))
 #define kvfree free
+static int atomic_context, irq_off, freed, deferred;
+static char vm_marker;
+#define is_vmalloc_addr(p) ((p) == &vm_marker)
+#define in_atomic() atomic_context
+#define irqs_disabled() irq_off
+#define vfree(p) (++freed)
+#define vfree_atomic(p) (++deferred)
 static int copy_from_user(void *d, const void *s, size_t n) {
  if ((uintptr_t)s < 4096) return 1; memcpy(d,s,n); return 0;
 }
@@ -57,6 +64,7 @@ static int sepol_expected_argc(u32 c) {
 }
 '''
 allocators = function(header, 'static inline void *ksu_kvmalloc') + '\n' + function(compat, 'static void *__kvmalloc')
+allocators += '\n' + function(header, 'static inline void ksu_kvfree')
 helper = ''
 if 'static int sepol_copy_legacy_payload' in rules:
     helper = function(rules, 'static int sepol_copy_legacy_payload')
@@ -71,13 +79,18 @@ out_free: free(payload); return ret;
 }
 int main(int argc, char **argv) {
  if (argc>1 && !strcmp(argv[1], "alloc")) {
+   ksu_kvfree(&vm_marker); assert(freed==1 && deferred==0);
+   atomic_context=1; ksu_kvfree(&vm_marker); atomic_context=0;
+   irq_off=1; ksu_kvfree(&vm_marker); irq_off=0;
+   assert(freed==1 && deferred==2);
+   ksu_kvfree(malloc(16)); assert(freed==1 && deferred==2);
    fail_alloc=1; vm_calls=0;
    assert(ksu_kvmalloc(64,GFP_ATOMIC)==NULL); assert(vm_calls==0);
    assert(__kvmalloc(64,GFP_ATOMIC)==NULL); assert(vm_calls==0);
    assert(!(last_flags & __GFP_DIRECT_RECLAIM));
    void *p=ksu_kvmalloc(64,GFP_KERNEL|__GFP_ZERO); assert(p && vm_calls==1);
    for (int i=0;i<64;i++) assert(((char*)p)[i]==0); free(p);
-   puts("PASS atomic OOM cannot enter vmalloc; sleeping zero allocation preserved"); return 0;
+   puts("PASS atomic allocation and deferred free; sleeping zero allocation preserved"); return 0;
  }
  struct {u32 cmd, subcmd; u64 args[7];} old={1,1,{0}};
  const char *args[]={"zygote","zygote","process","execmem"};

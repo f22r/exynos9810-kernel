@@ -14,10 +14,18 @@ index 6deb054f..634421f5 100644
  			buffer = vzalloc(size);
  		else
 diff --git a/kernel/compat/kernel_compat.h b/kernel/compat/kernel_compat.h
-index f3506c27..ec3cd86c 100644
+index f3506c27..00d018b6 100644
 --- a/kernel/compat/kernel_compat.h
 +++ b/kernel/compat/kernel_compat.h
-@@ -68,8 +68,9 @@ extern void *ksu_compat_kvrealloc(const void *p, size_t oldsize, size_t newsize,
+@@ -3,6 +3,7 @@
+ 
+ #include <linux/fs.h>
+ #include <linux/version.h>
++#include <linux/vmalloc.h>
+ #include <linux/task_work.h>
+ #include "ss/policydb.h"
+ #include "linux/key.h"
+@@ -68,18 +69,23 @@ extern void *ksu_compat_kvrealloc(const void *p, size_t oldsize, size_t newsize,
  static inline void *ksu_kvmalloc(size_t size, gfp_t flags)
  {
  	void *buf = kmalloc(size, flags);
@@ -29,6 +37,36 @@ index f3506c27..ec3cd86c 100644
  	
  	return buf;
  }
+ 
+ static inline void ksu_kvfree(const void *buf)
+ {
+-	if (is_vmalloc_addr(buf))
+-		vfree(buf);
+-	else
++	if (!is_vmalloc_addr(buf)) {
+ 		kfree(buf);
++		return;
++	}
++	if (in_atomic() || irqs_disabled())
++		vfree_atomic(buf);
++	else
++		vfree(buf);
+ }
+ #define kvmalloc ksu_kvmalloc
+ #define kvfree ksu_kvfree
+@@ -88,10 +94,9 @@ static inline void ksu_kvfree(const void *buf)
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
+ /*
+  * kvcalloc() was added in v4.18; provide a zeroing fallback for
+- * older kernels (4.9/4.14). kzalloc is sufficient for the small
+- * counts used by the symbol-lookup supercall and policydb copies.
++ * older kernels (4.9/4.14). kcalloc rejects overflowing element counts.
+  */
+-#define kvcalloc(n, size, flags) kzalloc((n) * (size), flags)
++#define kvcalloc(n, size, flags) kcalloc((n), (size), (flags))
+ #endif
+ 
+ // https://elixir.bootlin.com/linux/v4.14.222/source/lib/string.c#L282
 diff --git a/kernel/core/init.c b/kernel/core/init.c
 index e6562de1..11ef6be9 100644
 --- a/kernel/core/init.c
