@@ -260,6 +260,7 @@ unsigned int sched_rt_remove_ratio_for_freq = 0;
 static void sugov_get_util(unsigned long *util, unsigned long *max, u64 time)
 {
 	int cpu = smp_processor_id();
+	unsigned int rt_ratio = READ_ONCE(sched_rt_remove_ratio_for_freq);
 	unsigned long max_cap;
 	unsigned long rt_avg = cpu_rq(cpu)->rt.avg.util_avg;
 
@@ -272,8 +273,8 @@ static void sugov_get_util(unsigned long *util, unsigned long *max, u64 time)
 			     READ_ONCE(cpu_rq(cpu)->cfs.avg.util_est.enqueued));
 	}
 	
-	if (sched_rt_remove_ratio_for_freq)
-		*util -= ((rt_avg * sched_rt_remove_ratio_for_freq) / 100);
+	if (rt_ratio)
+		*util -= min(*util, rt_avg * rt_ratio / 100);
 	if (likely(use_pelt()))
 		*util = min(*util, max_cap);
 

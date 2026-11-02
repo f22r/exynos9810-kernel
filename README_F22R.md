@@ -45,7 +45,7 @@ The build driver reuses Apollo's compiler/config/model functions and captures
 Image, DTB, .config, System.map, compiler command and selected disassembly for
 every model before packaging.
 
-The build helper defaults to the local checkout path used for this release;
+Build and packaging default to their own checkout and use .f22r for local outputs;
 source and verification scripts are included in `tools/f22r/` with instructions.
 Kernel version strings retain DS-ACK, original model and build date, add F22R
 and v3.4.2, and contain no `-KSU` suffix. OneUI7 adds the `-OneUI7` marker.

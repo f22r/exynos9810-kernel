@@ -1,7 +1,7 @@
 # Build and verify the F22R release
 
 Requirements: Linux, Clang/LLVM 18 tools in ../compiler/clang-custom/bin,
-ARM32 cross tools, kernel build dependencies, bsdiff/bspatch, Python 3.
+ARM32 cross tools, kernel build dependencies, bsdiff/bspatch, fdtget, Python 3.
 
 Clone the source branch recursively, then use:
 
@@ -10,7 +10,7 @@ export F22R_KERNEL_ROOT="$PWD"
 export F22R_CAPTURE_ROOT="$PWD/../captures-v342"
 export F22R_REFERENCE_ZIPS="$PWD/../reference-v112"
 export F22R_OUTPUT="$PWD/../release-v342"
-export F22R_BUILD_DATE=16.10.2026
+export F22R_BUILD_DATE=$(TZ=Asia/Jakarta date +%d.%m.%Y)
 bash tools/f22r/build.sh regular
 bash tools/f22r/build.sh OneUI7
 python3 tools/f22r/package.py

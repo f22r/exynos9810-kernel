@@ -3,12 +3,14 @@
 # Licensed under CC BY-NC-SA 4.0
 # https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
 
-device=$(cat /proc/cmdline | sed 's/ /\n/g' | grep "androidboot.bootloader")
-if [ ! $device ] ; then
+set -e
+
+device=$(cat /proc/cmdline | sed 's/ /\n/g' | grep "androidboot.bootloader" || true)
+if [ -z "$device" ] ; then
     device=$1
 fi
 
-if [[ $2 = 0 ]]; then
+if [ "$2" = 0 ]; then
     OUTFD="/dev/null"
 else
     OUTFD="/proc/self/fd/$2"
@@ -31,6 +33,7 @@ if echo $device | grep '[GN]96[05][FN]'; then
 
     bb=/tmp/floyd/tools/busybox
     boot=$($bb find /dev/block/platform -iname boot)
+    [ -b "$boot" ] || exit 1
 
     
     ui_print " "
@@ -73,19 +76,33 @@ if echo $device | grep '[GN]96[05][FN]'; then
         ui_print "! Device is not supported"
         ui_print "Aborting..."
         sleep 1
-        exit
+        exit 1
     fi
 
     ui_print "- Installing F22R build based on DS-ACK V1.12"
-    cd /tmp/floyd && rm -rf /tmp/floydKernel && mkdir -p /tmp/floydKernel && cd /tmp/floydKernel
-    cp /tmp/floyd/tools/magiskboot imgtool && chmod 777 imgtool
-    dd if=$boot of=/tmp/floydKernel/old-boot.img bs=4096
+    rm -rf /tmp/floydKernel
+    mkdir /tmp/floydKernel
+    cd /tmp/floydKernel
+    cp /tmp/floyd/tools/magiskboot imgtool
+    chmod 755 imgtool
+    dd if="$boot" of=old-boot.img bs=4096
     ./imgtool unpack old-boot.img
-    rm -rf kernel && cp /tmp/floyd/kernel kernel
-    rm -rf extra && cp /tmp/floyd/extra extra
+    for part in kernel extra; do
+        [ -s "/tmp/floyd/$part" ] || exit 1
+        cp "/tmp/floyd/$part" "$part"
+        "$bb" cmp "/tmp/floyd/$part" "$part"
+    done
     ./imgtool repack -n old-boot.img
-    cp new-boot.img /tmp/floyd/boot.img
-    dd if=/tmp/floyd/boot.img of=$boot bs=4096
+    [ -s new-boot.img ] || exit 1
+    [ "$("$bb" wc -c < new-boot.img)" -le "$("$bb" wc -c < old-boot.img)" ] || exit 1
+    mkdir verify
+    cd verify
+    ../imgtool unpack ../new-boot.img
+    for part in kernel extra; do
+        "$bb" cmp "/tmp/floyd/$part" "$part"
+    done
+    cd ..
+    dd if=new-boot.img of="$boot" bs=4096
     sleep 1
 
     ui_print "- Cleaning leftovers.."

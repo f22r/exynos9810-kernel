@@ -2,7 +2,7 @@
 set -euo pipefail
 variant=${1:?regular or OneUI7}
 case "$variant" in regular) export CR_ONEUI7=n;; OneUI7) export CR_ONEUI7=y;; *) exit 2;; esac
-repo=${F22R_KERNEL_ROOT:-/root/exynos9810-f22r-3.4.2}
+repo=${F22R_KERNEL_ROOT:-$(cd -- "$(dirname -- "$0")/../.." && pwd)}
 cd "$repo"
 export CROSS_COMPILE_ARM32=arm-linux-gnueabihf-
 export CR_JOBS_LIMIT=10
@@ -16,7 +16,7 @@ CR_CLEAN=n
 CR_KSU=y
 CR_SELINUX=2
 CR_COMPILER=8
-capture="${F22R_CAPTURE_ROOT:-/root/f22r-v342-images}/$variant"
+capture="${F22R_CAPTURE_ROOT:-$repo/.f22r/captures}/$variant"
 mkdir -p "$capture" "$CR_PRODUCT"
 PACK_KERNEL_ZIP() {
   test -s "$CR_KERNEL"

@@ -461,7 +461,9 @@ static struct ctl_table kern_table[] = {
 		.data		= &sched_rt_remove_ratio_for_freq,
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one_hundred,
 	},
 #ifdef CONFIG_SCHED_USE_FLUID_RT
 	{

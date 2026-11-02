@@ -4,16 +4,28 @@ import hashlib
 import json
 import os
 import shutil
+import re
+import struct
+from datetime import datetime
 import subprocess
 import tempfile
 from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
 
-root = Path(os.environ.get('F22R_KERNEL_ROOT', '/root/exynos9810-f22r-3.4.2'))
-captures = Path(os.environ.get('F22R_CAPTURE_ROOT', '/root/f22r-v342-images'))
-out = Path(os.environ.get('F22R_OUTPUT', '/mnt/e/Android/artifacts/v3.4.2'))
+root = Path(os.environ.get('F22R_KERNEL_ROOT', Path(__file__).resolve().parents[2]))
+captures = Path(os.environ.get('F22R_CAPTURE_ROOT', root / '.f22r/captures'))
+out = Path(os.environ.get('F22R_OUTPUT', root / '.f22r/releases'))
 out.mkdir(parents=True, exist_ok=True)
 models = ('G960F', 'G965F', 'N960F', 'G960N', 'G965N', 'N960N')
-date = os.environ.get('F22R_BUILD_DATE', '16.10.2026')
+# Read the build date from the kernel itself, including when packaging a prior build.
+base_image = (captures / 'regular/G960F.Image').read_bytes()
+dates = set(re.findall(rb'4\.9\.337-DS-ACK-V1\.12-G960F-(\d{2}\.\d{2}\.\d{4})-F22R-v3\.4\.2', base_image))
+if len(dates) != 1:
+    raise ValueError("missing or ambiguous build date in G960F.Image")
+date = dates.pop().decode('ascii')
+datetime.strptime(date, '%d.%m.%Y')
+if os.environ.get('F22R_BUILD_DATE', date) != date:
+    raise ValueError("requested build date differs from captured kernel")
+del base_image
 
 def sha(data): return hashlib.sha256(data).hexdigest()
 
@@ -36,14 +48,6 @@ for variant in ('regular', 'OneUI7'):
             shutil.copyfile(template / rel, target)
         installer = stage / paths[2]
         text = installer.read_text().replace('fkv', name)
-        # Retain the upstream ramdisk-preserving flow; stop on failed operations.
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped.startswith(('mv G', 'mv N', './tools/bsdiff ', 'dd if=',
-                                    './imgtool ', 'cp new-boot.img')):
-                text = text.replace(line, line + ' || exit 1')
-        text = text.replace('    boot=$($bb find /dev/block/platform -iname boot)',
-            '    boot=$($bb find /dev/block/platform -iname boot)\n    [ -b "$boot" ] || exit 1')
         label = 'OneUI7 / Android 15-16' if variant == 'OneUI7' else 'Regular / Android 11-14'
         text = text.replace('    ui_print "Detecting device..."',
             f'    ui_print "{label}; KernelSU-Next v3.4.2 (legacy)"\n    ui_print "Detecting device..."')
@@ -52,6 +56,19 @@ for variant in ('regular', 'OneUI7'):
         for model in models:
             image = (image_folder / (model + '.Image')).read_bytes()
             dtb = (image_folder / (model + '.dtb')).read_bytes()
+            if dtb[:4] != b'DTBH' or struct.unpack_from('<II', dtb, 4) != (2, 1):
+                raise ValueError(f'{model}: unsupported DTBH header')
+            offset, size = struct.unpack_from('<II', dtb, 32)
+            if offset + size > len(dtb) or dtb[offset:offset + 4] != bytes.fromhex('d00dfeed'):
+                raise ValueError(f'{model}: invalid DTBH entry')
+            with tempfile.NamedTemporaryFile(dir=tmp) as tree:
+                tree.write(dtb[offset:offset + size])
+                tree.flush()
+                for partition in ('system', 'vendor', 'odm'):
+                    node = '/firmware/android/fstab/' + partition
+                    fs = subprocess.check_output(['fdtget', tree.name, node, 'type'], text=True).strip()
+                    if fs != 'ext4':
+                        raise ValueError(f'{variant}/{model}: {partition} uses {fs}, expected ext4')
             config = (image_folder / (model + '.config')).read_text()
             symbols = (image_folder / (model + '.System.map')).read_text()
             version = f'4.9.337-DS-ACK-V1.12-{model}-{date}-F22R-v3.4.2{suffix}'
