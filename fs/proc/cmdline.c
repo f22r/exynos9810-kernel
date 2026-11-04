@@ -1,3 +1,6 @@
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h>
+#endif
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/proc_fs.h>
@@ -13,6 +16,12 @@ static char new_command_line[COMMAND_LINE_SIZE];
 
 static int cmdline_proc_show(struct seq_file *m, void *v)
 {
+#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+	if (static_branch_unlikely(&susfs_is_fake_cmdline_or_bootconfig_buffer_set)) {
+		susfs_spoof_cmdline_or_bootconfig(m);
+		return 0;
+	}
+#endif
 	seq_puts(m, new_command_line);
 	seq_putc(m, '\n');
 	return 0;

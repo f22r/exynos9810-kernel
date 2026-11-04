@@ -3,7 +3,22 @@
 Requirements: Linux, Clang/LLVM 18 tools in ../compiler/clang-custom/bin,
 ARM32 cross tools, kernel build dependencies, bsdiff/bspatch, fdtget, Python 3.
 
-Clone the source branch recursively, then use:
+## Branches
+
+- `main`: published release source (currently tag `V1.13`).
+- `beta`: ongoing SUSFS 2.3 and Exynos stability/power work. Keep new fixes here
+  until device validation is complete; a successful build is not a boot test.
+- `experiment/star2lte-linux-7.1`: separate Linux port experiment, not a
+  recovery-flashable release.
+
+Regular and OneUI7 remain build variants of the same source branch. Do not create
+another branch for each optimization or kernel component.
+
+The current beta has passed a regular G965F build and host regression checks.
+Its SUSFS and power changes have not yet been tested on the phone; the other
+model/OneUI7 beta builds have not been validated.
+
+Clone the intended branch recursively, then use:
 
 ```bash
 export F22R_KERNEL_ROOT="$PWD"

@@ -6,6 +6,10 @@
 
 #define pr_fmt(fmt)	"reboot: " fmt
 
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs_def.h>
+extern int f22r_susfs_command(unsigned int cmd, void __user **arg);
+#endif
 #include <linux/ctype.h>
 #include <linux/export.h>
 #include <linux/kexec.h>
@@ -302,6 +306,10 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 	char buffer[256];
 	int ret = 0;
 
+#ifdef CONFIG_KSU_SUSFS
+	if ((unsigned int)magic2 == SUSFS_MAGIC)
+		return f22r_susfs_command(cmd, &arg);
+#endif
 	/* We only trust the superuser with rebooting the system. */
 #if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
 	if (system_state == SYSTEM_RUNNING) {

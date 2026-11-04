@@ -941,7 +941,8 @@ static void sugov_stop_slack(int cpu)
 
 static s64 get_next_event_time_ms(void)
 {
-	return ktime_to_us(tick_nohz_get_sleep_length());
+	/* expired_time and the timer expiry below are expressed in milliseconds. */
+	return ktime_to_ms(tick_nohz_get_sleep_length());
 }
 
 static int sugov_need_slack_timer(unsigned int cpu)

@@ -145,6 +145,17 @@ static void dvfs_callback(struct work_struct *data)
 	spin_unlock_irqrestore(&dvfs.spinlock, flags);
 }
 
+static void gpu_dvfs_cancel_work(void)
+{
+	unsigned long flags;
+
+	/* Block callback requeue before waiting for pending/running work. */
+	spin_lock_irqsave(&dvfs.spinlock, flags);
+	dvfs.timer_active = false;
+	spin_unlock_irqrestore(&dvfs.spinlock, flags);
+	cancel_delayed_work_sync(&dvfs.dvfs_work);
+}
+
 static void gpu_dvfs_timer_control(bool timer_state)
 {
 	unsigned long flags;
@@ -154,8 +165,7 @@ static void gpu_dvfs_timer_control(bool timer_state)
 		return;
 	}
 	if (dvfs.timer_active && !timer_state) {
-		cancel_delayed_work(&dvfs.dvfs_work);
-		flush_workqueue(dvfs.dvfs_wq);
+		gpu_dvfs_cancel_work();
 	} else if (!dvfs.timer_active && timer_state) {
 		gpex_qos_set_from_clock(gpex_clock_get_cur_clock());
 
@@ -267,8 +277,7 @@ static int gpu_pm_metrics_init(void)
 
 static void gpu_pm_metrics_term(void)
 {
-	cancel_delayed_work(&dvfs.dvfs_work);
-	flush_workqueue(dvfs.dvfs_wq);
+	gpu_dvfs_cancel_work();
 	destroy_workqueue(dvfs.dvfs_wq);
 }
 

@@ -20,6 +20,8 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/smc.h>
+#include <linux/wait.h>
+#include <linux/jiffies.h>
 
 #define HWRNG_RET_OK			0
 #define HWRNG_RET_INVALID_ERROR		1
@@ -48,6 +50,7 @@ atomic_t hwrng_running_flag;
 
 /* Protects exyswd read functions */
 static DEFINE_SPINLOCK(rng_running_lock);
+static DECLARE_WAIT_QUEUE_HEAD(rng_idle_wait);
 
 #ifdef CONFIG_EXYRNG_DEBUG
 #define exyrng_debug(args...)	printk(KERN_INFO args)
@@ -181,10 +184,8 @@ static int exynos_swd_read(struct hwrng *rng, void *data, size_t max, bool wait)
 #endif
 	spin_lock_irqsave(&rng_running_lock, running_flag);
 	if (atomic_read(&hwrng_suspend_flag) == 1) {
-		atomic_set(&hwrng_running_flag, 0);
 		spin_unlock_irqrestore(&rng_running_lock, running_flag);
-		printk("[ExyRNG] exynos_swd_read is failed because of suspend flag\n");
-		return -EFAULT;
+		return -EBUSY;
 	}
 
 	atomic_set(&hwrng_running_flag, 1);
@@ -306,6 +307,7 @@ err:
 	spin_lock_irqsave(&rng_running_lock, running_flag);
 	atomic_set(&hwrng_running_flag, 0);
 	spin_unlock_irqrestore(&rng_running_lock, running_flag);
+	wake_up(&rng_idle_wait);
 
 	return ret;
 }
@@ -346,20 +348,23 @@ static int exyswd_rng_remove(struct platform_device *pdev)
 static int exyswd_rng_suspend(struct device *dev)
 {
 	unsigned long flag;
-	int ret = HWRNG_RET_OK;
 
+	/* Block new reads before draining the current secure-world request. */
 	spin_lock_irqsave(&rng_running_lock, flag);
-	if (atomic_read(&hwrng_running_flag) == 1) {
-		printk("[ExyRNG] exyswd_rng_suspend: hwrng_running_flag is 1.\n");
-		ret = -EFAULT;
-		goto out;
-	}
-
 	atomic_set(&hwrng_suspend_flag, 1);
-out:
 	spin_unlock_irqrestore(&rng_running_lock, flag);
 
-	return ret;
+	if (wait_event_timeout(rng_idle_wait,
+			!atomic_read(&hwrng_running_flag),
+			msecs_to_jiffies(1000)))
+		return 0;
+
+	/* Suspend was aborted: keep the RNG available to the running system. */
+	spin_lock_irqsave(&rng_running_lock, flag);
+	atomic_set(&hwrng_suspend_flag, 0);
+	spin_unlock_irqrestore(&rng_running_lock, flag);
+
+	return -EBUSY;
 }
 
 static int exyswd_rng_resume(struct device *dev)

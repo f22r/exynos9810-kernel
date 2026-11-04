@@ -4,6 +4,9 @@
  *  Copyright (C) 1991, 1992  Linus Torvalds
  */
 
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h>
+#endif
 #include <linux/export.h>
 #include <linux/mm.h>
 #include <linux/utsname.h>
@@ -1355,6 +1358,10 @@ SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 
 	down_read(&uts_sem);
 	memcpy(&tmp, utsname(), sizeof(tmp));
+#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+	if (static_branch_unlikely(&susfs_is_uname_spoof_buffer_set))
+		susfs_spoof_uname(&tmp);
+#endif
 
 	if (current_uid().val != 0)
 		goto nospoof;

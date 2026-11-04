@@ -4,6 +4,8 @@
 
 menu "File systems"
 
+source "fs/Kconfig.susfs"
+
 # Use unaligned word dcache accesses
 config DCACHE_WORD_ACCESS
        bool

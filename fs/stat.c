@@ -4,6 +4,9 @@
  *  Copyright (C) 1991, 1992  Linus Torvalds
  */
 
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h>
+#endif
 #include <linux/export.h>
 #include <linux/mm.h>
 #include <linux/errno.h>
@@ -64,21 +67,32 @@ EXPORT_SYMBOL(generic_fillattr);
  * attributes to any user.  Any other code probably wants vfs_getattr.
  */
 int vfs_getattr_nosec(const struct path *path, struct kstat *stat,
-		      u32 request_mask, unsigned int query_flags)
+                      u32 request_mask, unsigned int query_flags)
 {
 	struct inode *inode = d_backing_inode(path->dentry);
+	int err = 0;
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+	u32 susfs_mask = 0;
+	bool is_fuse = false;
 
+	if (susfs_is_current_app_uid() && susfs_is_inode_sus_kstat(inode, &is_fuse))
+		susfs_mask = is_fuse ? STATX_SUS_KSTAT_FUSE : STATX_SUS_KSTAT;
+#endif
 	memset(stat, 0, sizeof(*stat));
 	stat->result_mask |= STATX_BASIC_STATS;
 	request_mask &= STATX_ALL;
 	query_flags &= KSTAT_QUERY_FLAGS;
 	if (inode->i_op->getattr)
-		return inode->i_op->getattr(path, stat, request_mask,
-					    query_flags);
-
-	generic_fillattr(inode, stat);
-	return 0;
+		err = inode->i_op->getattr(path, stat, request_mask, query_flags);
+	else
+		generic_fillattr(inode, stat);
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+	if (!err && susfs_mask)
+		susfs_sus_kstat_spoof_generic_fillattr(inode, stat, susfs_mask);
+#endif
+	return err;
 }
+
 EXPORT_SYMBOL(vfs_getattr_nosec);
 
 /*

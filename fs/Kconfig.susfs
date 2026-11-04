@@ -1,0 +1,52 @@
+menu "F22R SUSFS 2.3 integration"
+config KSU_SUSFS
+	bool "SUSFS 2.3 for built-in KernelSU-Next"
+	depends on KSU=y && ARM64 && !RKP_NS_PROT
+	default y
+
+config KSU_SUSFS_SUS_MOUNT
+	bool "SUS_MOUNT"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SUS_KSTAT
+	bool "SUS_KSTAT"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SPOOF_UNAME
+	bool "SPOOF_UNAME"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+	bool "HIDE_KSU_SUSFS_SYMBOLS"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+	bool "SPOOF_CMDLINE_OR_BOOTCONFIG"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_ENABLE_LOG
+	bool "ENABLE_LOG"
+	depends on KSU_SUSFS
+	default n
+
+config KSU_SUSFS_SUS_PATH
+	bool "SUS_PATH"
+	depends on KSU_SUSFS && BROKEN
+	default n
+
+config KSU_SUSFS_OPEN_REDIRECT
+	bool "OPEN_REDIRECT"
+	depends on KSU_SUSFS && BROKEN
+	default n
+
+config KSU_SUSFS_SUS_MAP
+	bool "SUS_MAP"
+	depends on KSU_SUSFS && BROKEN
+	default n
+
+endmenu

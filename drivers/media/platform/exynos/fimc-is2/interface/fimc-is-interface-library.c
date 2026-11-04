@@ -1294,8 +1294,13 @@ void fimc_is_svc_spin_unlock_restore_rta(ulong flags)
 
 int fimc_is_spin_lock_init(void **slock)
 {
+	if (!slock)
+		return -EINVAL;
+
 	if (*slock == NULL)
 		*slock = vzalloc(sizeof(spinlock_t));
+	if (!*slock)
+		return -ENOMEM;
 
 	spin_lock_init((spinlock_t *)*slock);
 
@@ -1308,19 +1313,16 @@ int fimc_is_spin_lock_init(void **slock)
 
 int fimc_is_spin_lock_finish(void *slock_lib)
 {
-	spinlock_t *slock = NULL;
-
 	if (slock_lib == NULL) {
 		err_lib("invalid spinlock");
 		return -EINVAL;
 	}
 
-	slock = (spinlock_t *)slock_lib;
-
 #ifdef LIB_MEM_TRACK
 	add_free_track(MT_TYPE_SPINLOCK, (ulong)slock_lib);
 #endif
-	vfree(slock_lib);
+	/* The camera DDK can release this object with interrupts disabled. */
+	vfree_atomic(slock_lib);
 
 	return 0;
 }

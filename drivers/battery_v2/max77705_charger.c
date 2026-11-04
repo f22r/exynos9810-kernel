@@ -47,6 +47,11 @@ extern unsigned int lpcharge;
 extern void max77705_set_fw_noautoibus(int enable);
 extern void max77705_usbc_icurr(u8 curr);
 
+/* Keep periodic register dumps opt-in; fault-triggered dumps stay available. */
+static bool monitor_debug = IS_ENABLED(CONFIG_SEC_FACTORY);
+module_param(monitor_debug, bool, 0600);
+MODULE_PARM_DESC(monitor_debug, "Enable periodic charger diagnostic register reads");
+
 static enum power_supply_property max77705_charger_props[] = {
 };
 
@@ -1280,8 +1285,10 @@ static int max77705_chg_get_property(struct power_supply *psy,
 			}
 			break;
 		case POWER_SUPPLY_EXT_PROP_MONITOR_WORK:
-			max77705_test_read(charger);
-			max77705_chg_monitor_work(charger);
+			if (READ_ONCE(monitor_debug)) {
+				max77705_test_read(charger);
+				max77705_chg_monitor_work(charger);
+			}
 			break;
 		default:
 			return -EINVAL;
