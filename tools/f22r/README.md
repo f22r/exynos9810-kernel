@@ -5,7 +5,7 @@ ARM32 cross tools, kernel build dependencies, bsdiff/bspatch, fdtget, Python 3.
 
 ## Branches
 
-- `main`: published release source (currently tag `V1.13`).
+- `main`: published release source.
 - `beta`: ongoing SUSFS 2.3 and Exynos stability/power work. Keep new fixes here
   until device validation is complete; a successful build is not a boot test.
 - `experiment/star2lte-linux-7.1`: separate Linux port experiment, not a

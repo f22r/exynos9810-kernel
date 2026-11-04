@@ -1,7 +1,6 @@
 # SUSFS 2.3.0 experimental integration
 
-Target: regular Galaxy S9+ G965F, Linux 4.9.337 DS-ACK. Local branch: f22r-susfs230.
-This is separate from f22r-susfs49 (SUSFS 1.5.5) and f22r-balanced.
+Target: regular Galaxy S9+ G965F, Linux 4.9.337 DS-ACK. Development branch: `beta`; validated release source is promoted to `main`.
 
 ## Sources
 
@@ -29,7 +28,7 @@ The previous camera deferred-free and RNG suspend-drain fixes are retained.
 
 Enabled: SUS_MOUNT, SUS_KSTAT, SPOOF_UNAME, HIDE_KSU_SUSFS_SYMBOLS, SPOOF_CMDLINE_OR_BOOTCONFIG. Verbose logging is off. Path hiding, open redirect and map hiding are unavailable in this initial profile (Kconfig BROKEN dependency), pending separate integration and validation. This is not a claim of full upstream feature parity.
 
-Use an ARM64 SUSFS v2.3-compatible userspace utility; the v1.5.5 utility is incompatible. The matching command structure was checked against the ReSukiSU reference, but no userspace utility was installed on the phone. No SUSFS module is automatically enabled by this source change.
+Use an ARM64 SUSFS v2.3-compatible userspace utility; the v1.5.5 utility is incompatible. The matching command structure was checked against the ReSukiSU reference, and tested on G965F with the official SUSFS module R28 universal utility (SHA256 8a626ce3bae27a7bcaa2e7f5f7b91e786ecc57f8e57d19c7856719a89b54b6fa). No SUSFS module is automatically enabled by this source change.
 
 ## Validation
 
@@ -39,4 +38,4 @@ Uses extracted production C functions with stubbed kernel interfaces and ASan/UB
 Existing KernelSU tests: python3 tools/f22r/test-legacy-policy.py KernelSU-Next
 Build: F22R_MODELS=2 F22R_BUILD_DATE=04.11.2026 F22R_CAPTURE_ROOT=/root/f22r-susfs230-20261104/captures bash tools/f22r/build.sh regular
 
-Pending device validation: boot/unlock, root/Manager/module lifecycle, v2 show version/features, non-root rejection, camera, storage, network, suspend/battery and mount isolation. OneUI7/UN1CA compatibility is not established. No phone flash or GitHub release was performed; this task produced an isolated experiment.
+Pending device validation: boot/unlock, root/Manager/module lifecycle, v2 show version/features, non-root rejection, camera, storage, network, suspend/battery and mount isolation. OneUI7/UN1CA compatibility is not established. On 2026-11-04 the regular G965F image booted on Noble Android 14, retained root and SELinux Enforcing, answered v2.3.0 and feature queries, and rejected non-root queries. Official SUSFS R28 installed and survived reboot; WebUI and both Zygisk architectures were active. Long-term stability and battery improvement remain unverified. Release preparation is in progress.
