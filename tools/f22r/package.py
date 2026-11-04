@@ -79,7 +79,11 @@ def package_variant(variant, staging):
             require(version.encode() + b'\0' in image, (variant, model, 'uname'))
             require(len(version) <= 64, 'uname too long')
             require(image[56:60] == b'ARM\x64', (variant, model, 'arm64 header'))
-            for flag in ('CONFIG_KSU=y', 'CONFIG_KSU_MANUAL_HOOK=y', 'CONFIG_SECURITY_SELINUX=y'):
+            for flag in ('CONFIG_KSU=y', 'CONFIG_KSU_MANUAL_HOOK=y', 'CONFIG_SECURITY_SELINUX=y',
+                         'CONFIG_KSU_SUSFS=y', 'CONFIG_KSU_SUSFS_SUS_MOUNT=y',
+                         'CONFIG_KSU_SUSFS_SUS_KSTAT=y', 'CONFIG_KSU_SUSFS_SPOOF_UNAME=y',
+                         'CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y',
+                         'CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y'):
                 require(flag in config.splitlines(), (variant, model, flag))
             require('CONFIG_ALWAYS_PERMISSIVE=y' not in config, 'permissive kernel')
             enabled = 'CONFIG_ONEUI7_WORKAROUND=y' in config.splitlines()

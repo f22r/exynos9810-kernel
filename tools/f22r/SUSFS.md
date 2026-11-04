@@ -38,4 +38,13 @@ Uses extracted production C functions with stubbed kernel interfaces and ASan/UB
 Existing KernelSU tests: python3 tools/f22r/test-legacy-policy.py KernelSU-Next
 Build: F22R_MODELS=2 F22R_BUILD_DATE=04.11.2026 F22R_CAPTURE_ROOT=/root/f22r-susfs230-20261104/captures bash tools/f22r/build.sh regular
 
-Pending device validation: boot/unlock, root/Manager/module lifecycle, v2 show version/features, non-root rejection, camera, storage, network, suspend/battery and mount isolation. OneUI7/UN1CA compatibility is not established. On 2026-11-04 the regular G965F image booted on Noble Android 14, retained root and SELinux Enforcing, answered v2.3.0 and feature queries, and rejected non-root queries. Official SUSFS R28 installed and survived reboot; WebUI and both Zygisk architectures were active. Long-term stability and battery improvement remain unverified. Release preparation is in progress.
+On 2026-11-04 the regular G965F image booted on Noble Android 14, retained root
+and SELinux Enforcing, answered v2.3.0 and feature queries, and rejected non-root
+queries. Official SUSFS R28 installed and survived reboot; WebUI and both Zygisk
+architectures were active. Rear and front camera previews produced frames, and
+switching between them succeeded. Collected post-test dmesg had no panic/Oops
+signature. The matching Manager was 33455-6 with driver 33355-6.
+
+Pending: long-term stability, suspend/battery improvement, exhaustive mount
+isolation, module removal, full camera capture modes and other physical models.
+OneUI7/UN1CA runtime compatibility is not established.

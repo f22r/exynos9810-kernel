@@ -1,7 +1,7 @@
-# DS-ACK F22R V1.13 Beta 1 — KernelSU-Next 3.4.2 legacy
+# DS-ACK F22R V1.14 — KernelSU-Next 3.4.2 legacy
 
 Unofficial update of DS-ACK by [duhansysl](https://github.com/duhansysl/exynos9810-kernel).
-F22R V1.13 is based on DS-ACK V1.12. The kernel release string retains the upstream base and the F22R build date.
+F22R V1.14 is based on DS-ACK V1.12. The kernel release string retains the upstream base and the F22R build date.
 Original credits, license and recovery installer lineage are retained.
 
 ## Two variants
@@ -36,8 +36,19 @@ to the official v3.4.2 Manager release code. Unmodified legacy commit-count
 calculation is 33318; both values and the exact source commit are documented
 here to avoid implying that the commit histories match.
 
-Use the official **Main v3.4.2 Manager**, not an unrelated APK with an incompatible
-signing certificate. Manager and ksud updates are separate from flashing the ZIP.
+Use the included **Manager v3.4.2-100-ga6c81fa4 (33455-6)**. This APK was
+verified with the legacy driver (33355-6); these version codes need not be equal.
+Manager and ksud updates are separate from flashing the ZIP.
+
+## SUSFS and maintenance changes
+
+SUSFS 2.3.0 is integrated with the limited feature profile documented in
+[tools/f22r/SUSFS.md](tools/f22r/SUSFS.md). The release includes the unmodified
+official SUSFS module R28, tested with its universal ARM64 utility.
+
+Retained camera allocation/deferred-free and RNG suspend-drain fixes are joined
+by a schedutil timer-unit correction, GPU DVFS timer shutdown synchronization,
+and reduced routine input/charger/KernelSU logging. Battery gains are not yet measured.
 
 ## Build
 
@@ -53,7 +64,15 @@ and v3.4.2, and contain no `-KSU` suffix. OneUI7 adds the `-OneUI7` marker.
 
 ## Verification limits
 
-Compiler success and package reconstruction are separate from boot/runtime
-verification. This update has not yet been physically tested for boot, module
-installation/removal, Zygisk injection, Vector/LSPosed, or OneUI7 brightness.
-The previous S9+ test applies to the earlier build only.
+On 2026-11-04, the regular G965F image was tested on a Galaxy S9+ running Noble
+Android 14: boot/unlock, root, SELinux Enforcing, Manager, SUSFS installation and
+reboot, SUSFS version/features and rejection of non-root queries, both Zygisk
+architectures, and rear/front camera preview switching. No kernel panic/Oops
+signature appeared in the collected post-test dmesg. Camera preview frames were
+confirmed; photo/video capture and every third-party module were not tested.
+
+Other models and OneUI7 receive build/package verification only. OneUI7/UN1CA
+runtime compatibility, long-term stability, battery improvement, module removal,
+and exhaustive mount isolation remain unverified. The upstream per-variant DTBs
+and their ext4 fstab declarations are preserved; this release does not claim
+compatibility with ROM layouts requiring different fstab/filesystem settings.
