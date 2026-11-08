@@ -241,5 +241,5 @@ obj-y  += security/samsung/tzic/
 
 obj-$(CONFIG_KSU) += kernelsu/
 
-# Optional OneUI7 workaround framework from duhansysl.
-obj-y += extremerom/
+# DuhanROM code
+obj-$(CONFIG_DUHANROM_BRIGHTNESS) += duhanrom/

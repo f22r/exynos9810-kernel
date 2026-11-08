@@ -20,7 +20,9 @@
 #endif
 #include "panel_drv.h"
 
-#include <linux/extremerom/brightness.h>
+#ifdef CONFIG_DUHANROM_BRIGHTNESS
+#include <linux/duhanrom/brightness.h>
+#endif
 
 #ifdef DEBUG_PAC
 static void print_tbl(int *tbl, int sz)
@@ -770,7 +772,7 @@ static int panel_set_brightness(struct backlight_device *bd)
 	struct panel_bl_device *panel_bl = bl_get_data(bd);
 	struct panel_device *panel = to_panel_device(panel_bl);
 
-#ifdef CONFIG_ONEUI7_WORKAROUND
+#ifdef CONFIG_DUHANROM_BRIGHTNESS
 	brightness = get_fixed_brightness(brightness);
 #endif
 
