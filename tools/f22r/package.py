@@ -86,8 +86,8 @@ def package_variant(variant, staging):
                          'CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y'):
                 require(flag in config.splitlines(), (variant, model, flag))
             require('CONFIG_ALWAYS_PERMISSIVE=y' not in config, 'permissive kernel')
-            enabled = 'CONFIG_ONEUI7_WORKAROUND=y' in config.splitlines()
-            require(enabled == (variant == 'OneUI7'), 'OneUI7 configuration')
+            # Unified kernel uses CONFIG_DUHANROM_BRIGHTNESS
+            require('CONFIG_DUHANROM_BRIGHTNESS=y' in config.splitlines(), 'DUHANROM brightness')
             require(' get_fixed_brightness\n' in symbols, 'brightness symbol')
             require(b'v3.4.2' in image, 'driver version string')
             command_file = image_folder / (model + '.ksu-command.txt')
@@ -102,7 +102,7 @@ def package_variant(variant, staging):
                     source = image_folder / (model + ('.Image' if ext == 'kernel' else '.dtb'))
                     subprocess.run(['bsdiff', str(base), str(source), str(dest)], check=True)
             records[model] = {'uname': version, 'Image_sha256': sha(image), 'DTB_sha256': sha(dtb),
-                              'OneUI7': enabled, 'driver_version': 33355}
+                              'OneUI7': False, 'driver_version': 33355}
         archive = staging / (name + '.zip')
         with ZipFile(archive, 'w', ZIP_DEFLATED) as package:
             for path in sorted(stage.rglob('*')):
@@ -146,11 +146,8 @@ def package_variant(variant, staging):
 
 with tempfile.TemporaryDirectory(prefix='.verify-', dir=out) as tmp:
     staging = Path(tmp)
-    reports = {variant: package_variant(variant, staging) for variant in ('regular', 'OneUI7')}
-    for model in models:
-        require(reports['regular']['models'][model]['Image_sha256'] !=
-                reports['OneUI7']['models'][model]['Image_sha256'], (model, 'identical variant images'))
+    reports = {'regular': package_variant('regular', staging)}
     (staging / 'verification.json').write_text(json.dumps(reports, indent=2))
-    for name in [reports['regular']['file'], reports['OneUI7']['file'], 'verification.json']:
+    for name in [reports['regular']['file'], 'verification.json']:
         (staging / name).replace(out / name)
-print('PASS: 12 kernels, 12 DTBs, Enforcing, legacy KSU, OneUI7 separation and original tools verified.')
+print('PASS: 6 kernels, 6 DTBs, Enforcing, legacy KSU, unified AIDL brightness and original tools verified.')
