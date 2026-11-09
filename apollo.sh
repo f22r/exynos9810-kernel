@@ -40,7 +40,7 @@ CR_DTB=$CR_DIR/arch/$CR_ARCH/boot/dtb.img
 # defconfig dir
 CR_DEFCONFIG=$CR_DIR/arch/$CR_ARCH/configs
 # Kernel Name and Version
-CR_VERSION=V1.12
+CR_VERSION=V1.13
 CR_KSU_VERSION=v3.4.2
 CR_ONEUI7=${CR_ONEUI7:-n}
 CR_JOBS_LIMIT=${CR_JOBS_LIMIT:-8}
