@@ -18,7 +18,7 @@ out.mkdir(parents=True, exist_ok=True)
 models = ('G960F', 'G965F', 'N960F', 'G960N', 'G965N', 'N960N')
 # Read the build date from the kernel itself, including when packaging a prior build.
 base_image = (captures / 'regular/G960F.Image').read_bytes()
-dates = set(re.findall(rb'4\.9\.337-DS-ACK-V1\.12-G960F-(\d{2}\.\d{2}\.\d{4})-F22R-v3\.4\.2', base_image))
+dates = set(re.findall(rb'4\.9\.337-DS-ACK-V1\.13-G960F-(\d{2}\.\d{2}\.\d{4})-F22R-v3\.4\.2', base_image))
 if len(dates) != 1:
     raise ValueError("missing or ambiguous build date in G960F.Image")
 date = dates.pop().decode('ascii')
@@ -36,7 +36,7 @@ def require(condition, detail):
 
 def package_variant(variant, staging):
     suffix = '-OneUI7' if variant == 'OneUI7' else ''
-    name = f'DS-ACK-V1.14-F22R-{date}-Enforcing-KernelSU{suffix}'
+    name = f'DS-ACK-V1.13-F22R-{date}-Enforcing-KernelSU{suffix}'
     original_name = f'DS-ACK-V1.12-08.05.2026-Enforcing-KernelSU{suffix}.zip'
     source_zip = Path(os.environ.get('F22R_REFERENCE_ZIPS') or '/mnt/e/Android/reference-v112') / original_name
     image_folder = captures / variant
@@ -75,7 +75,7 @@ def package_variant(variant, staging):
                         raise ValueError(f'{variant}/{model}: {partition} uses {fs}, expected ext4')
             config = (image_folder / (model + '.config')).read_text()
             symbols = (image_folder / (model + '.System.map')).read_text()
-            version = f'4.9.337-DS-ACK-V1.12-{model}-{date}-F22R-v3.4.2{suffix}'
+            version = f'4.9.337-DS-ACK-V1.13-{model}-{date}-F22R-v3.4.2{suffix}'
             require(version.encode() + b'\0' in image, (variant, model, 'uname'))
             require(len(version) <= 64, 'uname too long')
             require(image[56:60] == b'ARM\x64', (variant, model, 'arm64 header'))
@@ -88,7 +88,7 @@ def package_variant(variant, staging):
             require('CONFIG_ALWAYS_PERMISSIVE=y' not in config, 'permissive kernel')
             enabled = 'CONFIG_ONEUI7_WORKAROUND=y' in config.splitlines()
             require(enabled == (variant == 'OneUI7'), 'OneUI7 configuration')
-            require((' get_fixed_brightness\n' in symbols) == enabled, 'brightness symbol')
+            require(' get_fixed_brightness\n' in symbols, 'brightness symbol')
             require(b'v3.4.2' in image, 'driver version string')
             command_file = image_folder / (model + '.ksu-command.txt')
             command = command_file.read_text()

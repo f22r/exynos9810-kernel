@@ -29,11 +29,12 @@ PACK_KERNEL_ZIP() {
     echo 'Refusing permissive configuration' >&2
     return 1
   fi
+  grep -q '^CONFIG_DUHANROM_BRIGHTNESS=y$' .config
+  grep -q ' get_fixed_brightness$' System.map
   if [[ "$variant" == OneUI7 ]]; then
     grep -q '^CONFIG_ONEUI7_WORKAROUND=y$' .config
-    grep -q ' get_fixed_brightness$' System.map
   else
-    if grep -qx 'CONFIG_ONEUI7_WORKAROUND=y' .config || grep -q ' get_fixed_brightness$' System.map; then
+    if grep -qx 'CONFIG_ONEUI7_WORKAROUND=y' .config; then
       echo 'OneUI7 workaround in regular build' >&2
       return 1
     fi
